@@ -8,21 +8,21 @@
 
 */
 
-/* Modification to code - Dan Maslach 7/7/2020 */
+// Modification to code - Dan Maslach 7/7/2020 */
+// Additions mostly from https://github.com/mdhiggins/ESP8266-HTTP-IR-Blaster */
 
-
+#include <ArduinoJson.h>
+#include <ArduinoOTA.h>
+#include <ESP8266HTTPUpdateServer.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>  // Useful to access to ESP by hostname.local
 #include <FS.h>
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
-#include <ESP8266WiFi.h>
+#include <Ticker.h>		  // For LED status
 #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager WiFi Configuration Magic
-#include <ESP8266mDNS.h>  // Useful to access to ESP by hostname.local
 #include <WiFiUdp.h>
-#include <ArduinoJson.h>
-#include <ESP8266HTTPUpdateServer.h>
-#include <ESP8266WebServer.h>
-#include <ArduinoOTA.h>
-#include <Ticker.h>	 // For LED status
 
 //// ###### User configuration space for AC library classes ##########
 #include <ir_Midea.h>  //  replace library based on your AC unit model, check https://github.com/crankyoldgit/IRremoteESP8266
@@ -45,12 +45,12 @@ IRMideaAC ac(kIrLed);  // Library initialization, change it according to the
 					   // imported library file.
 const bool enableMDNSServices = true;
 const int ledpin = LED_BUILTIN;
-char wifi_config_name[] = "ACRemote";
-char host_name[20] = "";
+char wifi_config_name[] = "ESP Setup";
+char host_name[20] = "GarageAC";
 /// ##### End user configuration ######
 bool shouldSaveConfig = false;	// Flag for saving data
 struct state {
-	uint8_t temperature = 22, fan = 0, operation = 0;
+	uint8_t temperature = 85, fan = 0, operation = 0;
 	bool powerStatus;
 };
 
@@ -64,7 +64,7 @@ ESP8266HTTPUpdateServer httpUpdateServer;
 //+=============================================================================
 // convert the file extension to the MIME type
 //
-String getContentType(String filename) { 
+String getContentType(String filename) {
 	if (filename.endsWith(".html"))
 		return "text/html";
 	else if (filename.endsWith(".css"))
@@ -91,9 +91,8 @@ bool handleFileRead(String path) {
 	String pathWithGz = path + ".gz";
 	if (SPIFFS.exists(pathWithGz) || SPIFFS.exists(path)) {
 		// If the file exists, either as a compressed archive, or normal
-		if (SPIFFS.exists(
-				pathWithGz))  // If there's a compressed version available
-			path += ".gz";	  // Use the compressed verion
+		if (SPIFFS.exists(pathWithGz))	// If there's a compressed version available
+			path += ".gz";				// Use the compressed verion
 		File file = SPIFFS.open(path, "r");
 		//  Open the file
 		server.streamFile(file, contentType);
@@ -115,16 +114,18 @@ void handleFileUpload() {
 	HTTPUpload &upload = server.upload();
 	if (upload.status == UPLOAD_FILE_START) {
 		String filename = upload.filename;
-		if (!filename.startsWith("/"))
+		if (!filename.startsWith("/")) {
 			filename = "/" + filename;
+		}
 		// Serial.print("handleFileUpload Name: "); //Serial.println(filename);
 		fsUploadFile = SPIFFS.open(filename, "w");
 		// Open the file for writing in SPIFFS (create if it doesn't exist)
 		filename = String();
 	} else if (upload.status == UPLOAD_FILE_WRITE) {
-		if (fsUploadFile)
+		if (fsUploadFile) {
 			fsUploadFile.write(upload.buf, upload.currentSize);
-		// Write the received bytes to the file
+			// Write the received bytes to the file
+		}
 	} else if (upload.status == UPLOAD_FILE_END) {
 		if (fsUploadFile) {
 			// If the file was successfully created
@@ -215,9 +216,7 @@ void enableMDNS() {
 	ArduinoOTA.setHostname(host_name);
 	ArduinoOTA.onStart([]() { Serial.println("Start"); });
 	ArduinoOTA.onEnd([]() { Serial.println("\nEnd"); });
-	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-		Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-	});
+	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) { Serial.printf("Progress: %u%%\r", (progress / (total / 100))); });
 	ArduinoOTA.onError([](ota_error_t error) {
 		Serial.printf("Error[%u]: ", error);
 		if (error == OTA_AUTH_ERROR)
@@ -237,8 +236,7 @@ void enableMDNS() {
 	// Configure mDNS
 	MDNS.addService("http", "tcp",
 					port);	// Announce the ESP as an HTTP service
-	Serial.println("MDNS http service added. Hostname is set to " +
-				   String(host_name) + ".local:" + String(port));
+	Serial.println("MDNS http service added. Hostname is set to " + String(host_name) + ".local:" + String(port));
 }
 
 //+=============================================================================
@@ -408,8 +406,7 @@ bool setupWifi(bool resetConf) {
 		Serial.println("failed to mount FS");
 	}
 
-	WiFiManagerParameter custom_hostname(
-		"hostname", "Choose a hostname to this IR Controller", host_name, 20);
+	WiFiManagerParameter custom_hostname("hostname", "Choose a hostname to this IR Controller", host_name, 20);
 	wifiManager.addParameter(&custom_hostname);
 
 	// fetches ssid and pass and tries to connect
@@ -497,8 +494,7 @@ void setup() {
 
 	Serial.print("Local IP: ");
 	Serial.println(WiFi.localIP().toString());
-	Serial.println("URL to send commands: http://" + String(host_name) +
-				   ".local:" + port);
+	Serial.println("URL to send commands: http://" + String(host_name) + ".local:" + port);
 
 	if (enableMDNSServices) {
 		enableMDNS();
@@ -513,4 +509,6 @@ void setup() {
 
 //+=============================================================================
 //
-void loop() { server.handleClient(); }
+void loop() {
+	server.handleClient();
+}
