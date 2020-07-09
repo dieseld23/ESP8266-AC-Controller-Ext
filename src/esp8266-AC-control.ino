@@ -13,6 +13,7 @@
 
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <ESP8266HTTPClient.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
@@ -25,7 +26,10 @@
 #include <WiFiUdp.h>
 
 //// ###### User configuration space for AC library classes ##########
-#include <ir_Midea.h>  //  replace library based on your AC unit model, check https://github.com/crankyoldgit/IRremoteESP8266
+#include "C:\Users\Razer\Documents\PlatformIO\Projects\IRremoteESP8266\src\ir_Midea.h"	//  replace library based on your AC unit model, check https://github.com/crankyoldgit/IRremoteESP8266
+//#include <ir_Danby.h>
+// 0xA202FFFFFF7E  - energy saver
+// 0xA201FFFFFF7C  - ionizer
 
 #define AUTO_MODE kMideaACAuto
 #define COOL_MODE kMideaACCool
@@ -36,28 +40,59 @@
 #define FAN_MIN kMideaACFanLow
 #define FAN_MED kMideaACFanMed
 #define FAN_HI kMideaACFanHigh
+#define ENERGY_SAVER kMideaACEnergySaver
+#define IONIZER kMideaACToggleSwingV
+
+class tstatData {
+	public:
+		const char *name = "";
+		int mode = 0;
+		int currentState = 0;
+		int activestage = 0;
+		int fan = 0;
+		int fanstate = 0;
+		int tempunits = 0;
+		int schedule = 0;
+		int schedulepart = 0;
+		int away = 0;
+		int spacetemp = 79;
+		int heattemp = 78;
+		int cooltemp = 75;
+		int cooltempmin = 35;
+		int cooltempmax = 99;
+		int heattempmin = 35;
+		int heattempmax = 99;
+		int setpointdelta = 2;
+		int availablemodes = 0;
+};
 
 /// ##### Start user configuration ######
 const uint16_t kIrLed = 15;	 // ESP8266 GPIO pin to use for IR blaster.
 const int configpin = 10;
 int port = 80;
+tstatData tstat;
 IRMideaAC ac(kIrLed);  // Library initialization, change it according to the
 					   // imported library file.
 const bool enableMDNSServices = true;
+const size_t bufferSize = JSON_OBJECT_SIZE(22) + 300;
 const int ledpin = LED_BUILTIN;
 char wifi_config_name[] = "ESP Setup";
 char host_name[20] = "GarageAC";
+char tstatIP[20] = "GarageTstat";  // Venstar Tstat IP Address
 /// ##### End user configuration ######
 bool shouldSaveConfig = false;	// Flag for saving data
 struct state {
 	uint8_t temperature = 85, fan = 0, operation = 0;
 	bool powerStatus;
+	bool venstarControl;
 };
+
 
 File fsUploadFile;
 
 state acState;
 Ticker ticker;
+Ticker tstatTicker;
 ESP8266WebServer server(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
 
@@ -208,6 +243,50 @@ void lostWifiCallback(const WiFiEventStationModeDisconnected &evt) {
 }
 
 //+=============================================================================
+// Gets info from Thermostat
+//
+void getVenstarStatus() {
+	String url = "http://" + String(tstatIP) + "/query/info"; 
+	HTTPClient http;
+	http.begin(url);
+	int httpCode = http.GET();
+
+	if (httpCode > 0) {
+		DynamicJsonDocument doc(bufferSize);
+		DeserializationError error = deserializeJson(doc, http.getString());
+		if (error) {
+			Serial.println("There was an error while deserializing");
+			http.end();	 // Close connection
+		} 
+		else {
+			// JsonObject doc = jsonDocument.as<JsonObject>();
+			tstat.name = doc["name"];				 // "GarageAC1234567890"
+			tstat.mode = doc["mode"];						 // 0
+			tstat.currentState = doc["state"];					 // 0
+			tstat.activestage = doc["activestage"];		 // 0
+			tstat.fan = doc["fan"];						 // 0
+			tstat.fanstate = doc["fanstate"];				 // 0
+			tstat.tempunits = doc["tempunits"];			 // 0
+			tstat.schedule = doc["schedule"];				 // 0
+			tstat.schedulepart = doc["schedulepart"];		 // 0
+			tstat.away = doc["away"];						 // 0
+			tstat.spacetemp = doc["spacetemp"];			 // 79
+			tstat.heattemp = doc["heattemp"];				 // 78
+			tstat.cooltemp = doc["cooltemp"];				 // 75
+			tstat.cooltempmin = doc["cooltempmin"];		 // 35
+			tstat.cooltempmax = doc["cooltempmax"];		 // 99
+			tstat.heattempmin = doc["heattempmin"];		 // 35
+			tstat.heattempmax = doc["heattempmax"];		 // 99
+			tstat.setpointdelta = doc["setpointdelta"];	 // 2
+			tstat.availablemodes = doc["availablemodes"];	 // 0
+			http.end();	 // Close connection
+		}
+	}
+	
+
+}
+
+//+=============================================================================
 // Enable MDNS Function
 //
 void enableMDNS() {
@@ -265,13 +344,17 @@ void serverSetup() {
 				acState.operation = root["mode"];
 			}
 
+			if (root.containsKey("venstarControl")) {
+				acState.venstarControl = root["venstarControl"];
+			}
+
 			String output;
 			serializeJson(root, output);
 			server.send(200, "text/plain", output);
 
 			delay(200);
 
-			if (acState.powerStatus) {
+			if (acState.powerStatus && acState.venstarControl == false) {
 				ac.on();
 				ac.setTemp(acState.temperature);
 				if (acState.operation == 0) {
@@ -299,6 +382,9 @@ void serverSetup() {
 						ac.setFan(FAN_HI);
 					}
 				}
+			} else if (acState.venstarControl == true) {
+				ac.on();
+				ac.setTemp(68);
 			} else {
 				ac.off();
 			}
@@ -336,6 +422,7 @@ void serverSetup() {
 		root["fan"] = acState.fan;
 		root["temp"] = acState.temperature;
 		root["power"] = acState.powerStatus;
+		root["venstarControl"] = acState.venstarControl;
 		String output;
 		serializeJson(root, output);
 		server.send(200, "text/plain", output);
@@ -407,8 +494,10 @@ bool setupWifi(bool resetConf) {
 	}
 
 	WiFiManagerParameter custom_hostname("hostname", "Choose a hostname to this IR Controller", host_name, 20);
+	WiFiManagerParameter custom_tstatIP("tstatIP", "Venstar Thermostat IP", host_name, 20);
+	
 	wifiManager.addParameter(&custom_hostname);
-
+	wifiManager.addParameter(&custom_tstatIP);	
 	// fetches ssid and pass and tries to connect
 	// if it does not connect it starts an access point with the specified name
 	// and goes into a blocking loop awaiting configuration
@@ -423,16 +512,19 @@ bool setupWifi(bool resetConf) {
 
 	// if you get here you have connected to the WiFi
 	strncpy(host_name, custom_hostname.getValue(), 20);
+	strncpy(tstatIP, custom_tstatIP.getValue(), 20);
 
 	// Reset device if lost wifi Connection
 	WiFi.onStationModeDisconnected(&lostWifiCallback);
 
 	Serial.println("WiFi connected! User chose hostname '" + String(host_name));
+
 	// save the custom parameters to FS
 	if (shouldSaveConfig) {
 		Serial.println(" config...");
 		DynamicJsonDocument json(50);
 		json["hostname"] = host_name;
+		json["tstatIP"] = tstatIP;
 
 		File configFile = SPIFFS.open("/config.json", "w");
 		if (!configFile) {
@@ -495,15 +587,14 @@ void setup() {
 	Serial.print("Local IP: ");
 	Serial.println(WiFi.localIP().toString());
 	Serial.println("URL to send commands: http://" + String(host_name) + ".local:" + port);
+	Serial.println("Tstat IP set to: http://" + String(tstatIP) + ".local:" + port);
 
 	if (enableMDNSServices) {
 		enableMDNS();
 	}
 
 	httpUpdateServer.setup(&server);
-
 	serverSetup();
-
 	server.begin();
 }
 
@@ -511,4 +602,7 @@ void setup() {
 //
 void loop() {
 	server.handleClient();
+	if (acState.venstarControl == true) {
+		ticker.attach(2, getVenstarStatus);
+	}
 }

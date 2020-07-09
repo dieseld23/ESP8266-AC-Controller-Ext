@@ -23,7 +23,7 @@ function updateStatus() {
         $("#power-btn").addClass("btn-default");
         $("#power-btn").removeClass("btn-info");
       }
-      $("#target_temp").text(state["temp"] + " C");
+      $("#target_temp").text(state["temp"] + " F");
       setModeColor(state["mode"]);
       setFanColor(state["fan"]);
     },
@@ -118,15 +118,29 @@ function power_onclick(power) {
   postData(state);
 }
 
+function venstarControl_onclick(venstarControl) {
+  if (state["venstarControl"]) {
+    state["venstarControl"] = false;
+    $("#venstarControl").text(" OFF");
+    $("#venstarControl-btn").removeClass("btn-info");
+    $("#venstarControl-btn").addClass("btn-default");
+  } else {
+    state["venstarControl"] = true;
+    $("#venstarControl").text(" ON");
+    $("#venstarControl-btn").addClass("btn-info");
+    $("#venstarControl-btn").removeClass("btn-default");
+  }
+  postData(state);
+}
 
 function temp_onclick(temp) {
   state["temp"] += temp;
-  if (state["temp"] < 17) {
-    state["temp"] = 17;
-  }
-  if (state["temp"] > 30) {
+  if (state["temp"] < 30) {
     state["temp"] = 30;
   }
-  $("#target_temp").text(state["temp"] + " C");
+  if (state["temp"] > 115) {
+    state["temp"] = 115;
+  }
+  $("#target_temp").text(state["temp"] + " F");
   postData(state);
 }
