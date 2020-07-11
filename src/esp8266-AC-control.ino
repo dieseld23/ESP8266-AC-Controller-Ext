@@ -26,7 +26,7 @@
 #include <WiFiUdp.h>
 
 //// ###### User configuration space for AC library classes ##########
-#include "C:\Users\Razer\Documents\PlatformIO\Projects\IRremoteESP8266\src\ir_Midea.h"	//  replace library based on your AC unit model, check https://github.com/crankyoldgit/IRremoteESP8266
+#include <ir_Midea.h>  //  replace library based on your AC unit model, check https://github.com/crankyoldgit/IRremoteESP8266
 //#include <ir_Danby.h>
 // 0xA202FFFFFF7E  - energy saver
 // 0xA201FFFFFF7C  - ionizer
@@ -44,26 +44,26 @@
 #define IONIZER kMideaACToggleSwingV
 
 class tstatData {
-	public:
-		const char *name = "";
-		int mode = 0;
-		int currentState = 0;
-		int activestage = 0;
-		int fan = 0;
-		int fanstate = 0;
-		int tempunits = 0;
-		int schedule = 0;
-		int schedulepart = 0;
-		int away = 0;
-		int spacetemp = 79;
-		int heattemp = 78;
-		int cooltemp = 75;
-		int cooltempmin = 35;
-		int cooltempmax = 99;
-		int heattempmin = 35;
-		int heattempmax = 99;
-		int setpointdelta = 2;
-		int availablemodes = 0;
+   public:
+	const char *name = "";
+	int mode = 0;
+	int currentState = 0;
+	int activestage = 0;
+	int fan = 0;
+	int fanstate = 0;
+	int tempunits = 0;
+	int schedule = 0;
+	int schedulepart = 0;
+	int away = 0;
+	int spacetemp = 79;
+	int heattemp = 78;
+	int cooltemp = 75;
+	int cooltempmin = 35;
+	int cooltempmax = 99;
+	int heattempmin = 35;
+	int heattempmax = 99;
+	int setpointdelta = 2;
+	int availablemodes = 0;
 };
 
 /// ##### Start user configuration ######
@@ -71,22 +71,26 @@ const uint16_t kIrLed = 15;	 // ESP8266 GPIO pin to use for IR blaster.
 const int configpin = 10;
 int port = 80;
 tstatData tstat;
+
 IRMideaAC ac(kIrLed);  // Library initialization, change it according to the
 					   // imported library file.
 const bool enableMDNSServices = true;
 const size_t bufferSize = JSON_OBJECT_SIZE(22) + 300;
 const int ledpin = LED_BUILTIN;
+//const int led2pin = 16;
+const int led3pin = 14;
 char wifi_config_name[] = "ESP Setup";
-char host_name[20] = "GarageAC";
-char tstatIP[20] = "GarageTstat";  // Venstar Tstat IP Address
+char host_name[20] = "garageac";
+char tstatIP[20] = "garagetstat";  // Venstar Tstat IP Address
 /// ##### End user configuration ######
+unsigned long previousMillis = 0;
 bool shouldSaveConfig = false;	// Flag for saving data
+bool setLED = false;
 struct state {
 	uint8_t temperature = 85, fan = 0, operation = 0;
 	bool powerStatus;
-	bool venstarControl;
+	bool extControl = true;
 };
-
 
 File fsUploadFile;
 
@@ -204,20 +208,42 @@ void tick() {
 }
 
 //+=============================================================================
-// Callback notifying us of the need to save config
-//
-void saveConfigCallback() {
-	Serial.println("Should save config");
-	shouldSaveConfig = true;
-}
-
-//+=============================================================================
 // Turn off the Led after timeout
 //
 void disableLed() {
 	Serial.println("Turning off the LED to save power.");
 	digitalWrite(ledpin, HIGH);	 // Shut down the LED
 	ticker.detach();			 // Stopping the ticker
+}
+
+//+=============================================================================
+// Turn on or off secondary LED for X milliseconds
+//
+void ledEnable(int pin, unsigned long interval) {
+	unsigned long currentMillis = millis();
+
+	if (currentMillis - previousMillis <= interval) {
+		// save the last time you blinked the LED
+		previousMillis = currentMillis;
+		digitalWrite(pin, HIGH);
+		Serial.println("HIGH" + currentMillis);
+		delay(500);
+	}
+	else
+	{
+		digitalWrite(pin, LOW);
+		setLED = false;
+		Serial.println("LOW" + currentMillis);delay(500);
+	}
+	
+}
+
+//+=============================================================================
+// Callback notifying us of the need to save config
+//
+void saveConfigCallback() {
+	Serial.println("Should save config");
+	shouldSaveConfig = true;
 }
 
 //+=============================================================================
@@ -246,44 +272,46 @@ void lostWifiCallback(const WiFiEventStationModeDisconnected &evt) {
 // Gets info from Thermostat
 //
 void getVenstarStatus() {
-	String url = "http://" + String(tstatIP) + "/query/info"; 
+	WiFiClient client;
+	String url = "http://" + String(tstatIP) + "/query/info";
 	HTTPClient http;
-	http.begin(url);
+	http.setReuse(true);
+	http.begin(client, url);
 	int httpCode = http.GET();
-
+	Serial.println(httpCode);
 	if (httpCode > 0) {
 		DynamicJsonDocument doc(bufferSize);
 		DeserializationError error = deserializeJson(doc, http.getString());
 		if (error) {
 			Serial.println("There was an error while deserializing");
 			http.end();	 // Close connection
-		} 
-		else {
+		} else {
 			// JsonObject doc = jsonDocument.as<JsonObject>();
-			tstat.name = doc["name"];				 // "GarageAC1234567890"
-			tstat.mode = doc["mode"];						 // 0
-			tstat.currentState = doc["state"];					 // 0
-			tstat.activestage = doc["activestage"];		 // 0
-			tstat.fan = doc["fan"];						 // 0
-			tstat.fanstate = doc["fanstate"];				 // 0
-			tstat.tempunits = doc["tempunits"];			 // 0
-			tstat.schedule = doc["schedule"];				 // 0
-			tstat.schedulepart = doc["schedulepart"];		 // 0
-			tstat.away = doc["away"];						 // 0
-			tstat.spacetemp = doc["spacetemp"];			 // 79
-			tstat.heattemp = doc["heattemp"];				 // 78
-			tstat.cooltemp = doc["cooltemp"];				 // 75
-			tstat.cooltempmin = doc["cooltempmin"];		 // 35
-			tstat.cooltempmax = doc["cooltempmax"];		 // 99
-			tstat.heattempmin = doc["heattempmin"];		 // 35
-			tstat.heattempmax = doc["heattempmax"];		 // 99
-			tstat.setpointdelta = doc["setpointdelta"];	 // 2
-			tstat.availablemodes = doc["availablemodes"];	 // 0
-			http.end();	 // Close connection
+			tstat.name = doc["name"];					   // "GarageAC1234567890"
+			tstat.mode = doc["mode"];					   // 0
+			tstat.currentState = doc["state"];			   // 0
+			tstat.activestage = doc["activestage"];		   // 0
+			tstat.fan = doc["fan"];						   // 0
+			tstat.fanstate = doc["fanstate"];			   // 0
+			tstat.tempunits = doc["tempunits"];			   // 0
+			tstat.schedule = doc["schedule"];			   // 0
+			tstat.schedulepart = doc["schedulepart"];	   // 0
+			tstat.away = doc["away"];					   // 0
+			tstat.spacetemp = doc["spacetemp"];			   // 79
+			tstat.heattemp = doc["heattemp"];			   // 78
+			tstat.cooltemp = doc["cooltemp"];			   // 75
+			tstat.cooltempmin = doc["cooltempmin"];		   // 35
+			tstat.cooltempmax = doc["cooltempmax"];		   // 99
+			tstat.heattempmin = doc["heattempmin"];		   // 35
+			tstat.heattempmax = doc["heattempmax"];		   // 99
+			tstat.setpointdelta = doc["setpointdelta"];	   // 2
+			tstat.availablemodes = doc["availablemodes"];  // 0
+										   // Close connection
+			
 		}
+		Serial.println(tstat.currentState);
+		http.end();		
 	}
-	
-
 }
 
 //+=============================================================================
@@ -331,30 +359,25 @@ void serverSetup() {
 			if (root.containsKey("temp")) {
 				acState.temperature = (uint8_t)root["temp"];
 			}
-
 			if (root.containsKey("fan")) {
 				acState.fan = (uint8_t)root["fan"];
 			}
-
 			if (root.containsKey("power")) {
 				acState.powerStatus = root["power"];
 			}
-
 			if (root.containsKey("mode")) {
 				acState.operation = root["mode"];
 			}
-
-			if (root.containsKey("venstarControl")) {
-				acState.venstarControl = root["venstarControl"];
+			if (root.containsKey("extControl")) {
+				acState.extControl = root["extControl"];
 			}
-
 			String output;
 			serializeJson(root, output);
 			server.send(200, "text/plain", output);
 
 			delay(200);
 
-			if (acState.powerStatus && acState.venstarControl == false) {
+			if (acState.powerStatus && acState.extControl == false) {
 				ac.on();
 				ac.setTemp(acState.temperature);
 				if (acState.operation == 0) {
@@ -382,13 +405,26 @@ void serverSetup() {
 						ac.setFan(FAN_HI);
 					}
 				}
-			} else if (acState.venstarControl == true) {
-				ac.on();
-				ac.setTemp(68);
+			} else if (acState.extControl == true) { 
+				if (tstat.currentState == 2) {
+					acState.operation = 1;  // COOL_MODE
+					acState.temperature = 65;
+					acState.fan = 0; // FAN_AUTO
+					ac.on();
+					ac.setTemp(acState.temperature);
+					ac.setFan(acState.fan);
+					ac.send();						// economode is seperate message so send it as a seperate command
+					delay(200);						
+					ac.setEconoToggle(true);		// turn off Econo mode
+		
+				} else {
+					ac.off();
+				}
 			} else {
 				ac.off();
 			}
 			ac.send();
+			setLED = true;
 		}
 	});
 
@@ -422,7 +458,7 @@ void serverSetup() {
 		root["fan"] = acState.fan;
 		root["temp"] = acState.temperature;
 		root["power"] = acState.powerStatus;
-		root["venstarControl"] = acState.venstarControl;
+		root["extControl"] = acState.extControl;
 		String output;
 		serializeJson(root, output);
 		server.send(200, "text/plain", output);
@@ -445,7 +481,6 @@ void serverSetup() {
 bool setupWifi(bool resetConf) {
 	// start ticker with 0.5 because we start in AP mode and try to connect
 	ticker.attach(0.5, tick);
-
 	// WiFiManager
 	// Local intialization. Once its business is done, there is no need to keep
 	// it around
@@ -464,13 +499,13 @@ bool setupWifi(bool resetConf) {
 	wifiManager.setConfigPortalTimeout(180);
 
 	if (SPIFFS.begin()) {
-		Serial.println("mounted file system");
+		Serial.println("Mounted file system");
 		if (SPIFFS.exists("/config.json")) {
 			// file exists, reading and loading
-			Serial.println("reading config file");
+			Serial.println("Reading config file");
 			File configFile = SPIFFS.open("/config.json", "r");
 			if (configFile) {
-				Serial.println("opened config file");
+				Serial.println("Opened config file");
 				size_t size = configFile.size();
 				// Allocate a buffer to store contents of the file.
 				std::unique_ptr<char[]> buf(new char[size]);
@@ -480,24 +515,29 @@ bool setupWifi(bool resetConf) {
 				DeserializationError error = deserializeJson(json, buf.get());
 				serializeJson(json, Serial);
 				if (!error) {
-					Serial.println("\nparsed json");
+					Serial.println("\nParsed json");
 
-					if (json.containsKey("hostname"))
+					if (json.containsKey("hostname")) {
 						strncpy(host_name, json["hostname"], 20);
+					}
+					if (json.containsKey("tstatIP")) {
+						strncpy(tstatIP, json["tstatIP"], 20);
+					}
+
 				} else {
-					Serial.println("failed to load json config");
+					Serial.println("Failed to load json config");
 				}
 			}
 		}
 	} else {
-		Serial.println("failed to mount FS");
+		Serial.println("Failed to mount FS");
 	}
 
 	WiFiManagerParameter custom_hostname("hostname", "Choose a hostname to this IR Controller", host_name, 20);
-	WiFiManagerParameter custom_tstatIP("tstatIP", "Venstar Thermostat IP", host_name, 20);
-	
+	WiFiManagerParameter custom_tstatIP("tstatIP", "Venstar Thermostat IP", tstatIP, 20);
+
 	wifiManager.addParameter(&custom_hostname);
-	wifiManager.addParameter(&custom_tstatIP);	
+	wifiManager.addParameter(&custom_tstatIP);
 	// fetches ssid and pass and tries to connect
 	// if it does not connect it starts an access point with the specified name
 	// and goes into a blocking loop awaiting configuration
@@ -505,9 +545,9 @@ bool setupWifi(bool resetConf) {
 	if (!wifiManager.autoConnect(wifi_config_name)) {
 		Serial.println("Failed to connect and hit timeout");
 		// reset and try again, or maybe put it to deep sleep
-		delay(3000);
+		delay(1000);
 		ESP.reset();
-		delay(5000);
+		delay(2000);
 	}
 
 	// if you get here you have connected to the WiFi
@@ -517,18 +557,18 @@ bool setupWifi(bool resetConf) {
 	// Reset device if lost wifi Connection
 	WiFi.onStationModeDisconnected(&lostWifiCallback);
 
-	Serial.println("WiFi connected! User chose hostname '" + String(host_name));
+	Serial.println("WiFi connected! User chose hostname '" + String(host_name) + "'");
 
 	// save the custom parameters to FS
 	if (shouldSaveConfig) {
-		Serial.println(" config...");
-		DynamicJsonDocument json(50);
+		Serial.println(" Config...");
+		DynamicJsonDocument json(100);
 		json["hostname"] = host_name;
 		json["tstatIP"] = tstatIP;
 
 		File configFile = SPIFFS.open("/config.json", "w");
 		if (!configFile) {
-			Serial.println("failed to open config file for writing");
+			Serial.println("Failed to open config file for writing");
 		}
 
 		serializeJson(json, Serial);
@@ -551,6 +591,8 @@ bool setupWifi(bool resetConf) {
 //
 void setup() {
 	pinMode(ledpin, OUTPUT);
+	//pinMode(led2pin, OUTPUT);
+	pinMode(led3pin, OUTPUT);
 	Serial.begin(115200);
 	// Serial.println();
 	ac.begin();
@@ -586,8 +628,8 @@ void setup() {
 
 	Serial.print("Local IP: ");
 	Serial.println(WiFi.localIP().toString());
-	Serial.println("URL to send commands: http://" + String(host_name) + ".local:" + port);
-	Serial.println("Tstat IP set to: http://" + String(tstatIP) + ".local:" + port);
+	Serial.println("URL to send commands: http://" + String(host_name) + ":" + port);
+	Serial.println("Tstat IP set to: http://" + String(tstatIP) + ":" + port);
 
 	if (enableMDNSServices) {
 		enableMDNS();
@@ -601,8 +643,14 @@ void setup() {
 //+=============================================================================
 //
 void loop() {
+	ArduinoOTA.handle();
 	server.handleClient();
-	if (acState.venstarControl == true) {
-		ticker.attach(2, getVenstarStatus);
+	MDNS.update();
+	if (acState.extControl == true) {
+		tstatTicker.attach(5,getVenstarStatus);
+	}
+
+	if (setLED == true) {
+	//	ledEnable(led3pin, 2000);
 	}
 }
