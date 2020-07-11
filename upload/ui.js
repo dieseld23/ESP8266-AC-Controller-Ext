@@ -6,7 +6,7 @@ function updateStatus() {
     url: "state",
     dataType: "json",
     data: [{
-      name: "light",
+      name: "dark",
       value: "1"
     }, ],
     success: function(data) {
@@ -23,6 +23,20 @@ function updateStatus() {
         $("#power-btn").addClass("btn-default");
         $("#power-btn").removeClass("btn-info");
       }
+      
+      if (state["extControl"] === true) {
+        $("#extControl").text(" ON");
+        $("#extControl-btn").addClass("btn-info");
+        $("#extControl-btn").removeClass("btn-default");
+        $(".disableBtn").addClass("disable-Btn");
+
+      } else {
+        $("#extControl").text(" OFF");
+        $("#extControl-btn").removeClass("btn-info");
+        $("#extControl-btn").addClass("btn-default");
+        $(".disableBtn").removeClass("disable-Btn");
+      }
+
       $("#target_temp").text(state["temp"] + " F");
       setModeColor(state["mode"]);
       setFanColor(state["fan"]);
@@ -118,17 +132,19 @@ function power_onclick(power) {
   postData(state);
 }
 
-function venstarControl_onclick(venstarControl) {
-  if (state["venstarControl"]) {
-    state["venstarControl"] = false;
-    $("#venstarControl").text(" OFF");
-    $("#venstarControl-btn").removeClass("btn-info");
-    $("#venstarControl-btn").addClass("btn-default");
+function extControl_onclick(extControl) {
+  if (state["extControl"]) {
+    state["extControl"] = false;
+    $("#extControl").text(" OFF");
+    $("#extControl-btn").removeClass("btn-info");
+    $("#extControl-btn").addClass("btn-default");
+    $(".disableBtn").removeClass("disable-Btn");
   } else {
-    state["venstarControl"] = true;
-    $("#venstarControl").text(" ON");
-    $("#venstarControl-btn").addClass("btn-info");
-    $("#venstarControl-btn").removeClass("btn-default");
+    state["extControl"] = true;
+    $("#extControl").text(" ON");
+    $("#extControl-btn").addClass("btn-info");
+    $("#extControl-btn").removeClass("btn-default");
+    $(".disableBtn").addClass("disable-Btn");
   }
   postData(state);
 }

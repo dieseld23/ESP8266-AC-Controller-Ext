@@ -84,6 +84,7 @@ char host_name[20] = "garageac";
 char tstatIP[20] = "garagetstat";  // Venstar Tstat IP Address
 /// ##### End user configuration ######
 unsigned long previousMillis = 0;
+unsigned long currentMillis = 0;
 bool shouldSaveConfig = false;	// Flag for saving data
 bool setLED = false;
 struct state {
@@ -95,8 +96,8 @@ struct state {
 File fsUploadFile;
 
 state acState;
-Ticker ticker;
-Ticker tstatTicker;
+Ticker led1tick;
+Ticker led3tick;
 ESP8266WebServer server(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
 
@@ -202,7 +203,7 @@ void handleNotFound() {
 //+=============================================================================
 // Toggle state
 //
-void tick() {
+void led1Ticker() {
 	int state = digitalRead(ledpin);  // get the current state of GPIO1 pin
 	digitalWrite(ledpin, !state);	  // set pin to the opposite state
 }
@@ -210,33 +211,31 @@ void tick() {
 //+=============================================================================
 // Turn off the Led after timeout
 //
-void disableLed() {
+void led1TickerDisable() {
 	Serial.println("Turning off the LED to save power.");
 	digitalWrite(ledpin, HIGH);	 // Shut down the LED
-	ticker.detach();			 // Stopping the ticker
+	led1tick.detach();			 // Stopping the ticker
 }
 
 //+=============================================================================
-// Turn on or off secondary LED for X milliseconds
+// Toggle state
 //
-void ledEnable(int pin, unsigned long interval) {
-	unsigned long currentMillis = millis();
-
-	if (currentMillis - previousMillis <= interval) {
-		// save the last time you blinked the LED
-		previousMillis = currentMillis;
-		digitalWrite(pin, HIGH);
-		Serial.println("HIGH" + currentMillis);
-		delay(500);
+void led3Ticker() {
+	if (digitalRead(led3pin) == HIGH) {
+		led3TickerDisable();
 	}
-	else
-	{
-		digitalWrite(pin, LOW);
-		setLED = false;
-		Serial.println("LOW" + currentMillis);delay(500);
-	}
-	
+	digitalWrite(led3pin, HIGH);	  // set pin to the opposite state
+	Serial.println("ledon");
 }
+
+//+=============================================================================
+// Turn off the Led after timeout
+//
+void led3TickerDisable() {
+	digitalWrite(led3pin, LOW);	 // Shut down the LED
+	led3tick.detach();			 // Stopping the ticker
+}
+
 
 //+=============================================================================
 // Callback notifying us of the need to save config
@@ -255,7 +254,7 @@ void configModeCallback(WiFiManager *myWiFiManager) {
 	// if you used auto generated SSID, print it
 	Serial.println(myWiFiManager->getConfigPortalSSID());
 	// entered config mode, make led toggle faster
-	ticker.attach(0.2, tick);
+	led1tick.attach(0.2, led1Ticker);
 }
 
 //+=============================================================================
@@ -278,7 +277,7 @@ void getVenstarStatus() {
 	http.setReuse(true);
 	http.begin(client, url);
 	int httpCode = http.GET();
-	Serial.println(httpCode);
+	//Serial.println(httpCode);
 	if (httpCode > 0) {
 		DynamicJsonDocument doc(bufferSize);
 		DeserializationError error = deserializeJson(doc, http.getString());
@@ -309,7 +308,7 @@ void getVenstarStatus() {
 										   // Close connection
 			
 		}
-		Serial.println(tstat.currentState);
+		//Serial.println(tstat.currentState);
 		http.end();		
 	}
 }
@@ -480,7 +479,7 @@ void serverSetup() {
 //
 bool setupWifi(bool resetConf) {
 	// start ticker with 0.5 because we start in AP mode and try to connect
-	ticker.attach(0.5, tick);
+	led1tick.attach(0.5, led1Ticker);
 	// WiFiManager
 	// Local intialization. Once its business is done, there is no need to keep
 	// it around
@@ -579,7 +578,7 @@ bool setupWifi(bool resetConf) {
 		json.clear();
 		Serial.println("Config written successfully");
 	}
-	ticker.detach();
+	led1tick.detach();
 
 	// keep LED on
 	digitalWrite(ledpin, LOW);
@@ -624,7 +623,7 @@ void setup() {
 	wifi_set_sleep_type(LIGHT_SLEEP_T);
 	digitalWrite(ledpin, LOW);
 	// Turn off the led in 2s
-	ticker.attach(2, disableLed);
+	led1tick.attach(2, led1TickerDisable);
 
 	Serial.print("Local IP: ");
 	Serial.println(WiFi.localIP().toString());
@@ -646,11 +645,15 @@ void loop() {
 	ArduinoOTA.handle();
 	server.handleClient();
 	MDNS.update();
+	currentMillis = millis();
 	if (acState.extControl == true) {
-		tstatTicker.attach(5,getVenstarStatus);
+		if(currentMillis - previousMillis > 2000) {
+			previousMillis = currentMillis;   
+			getVenstarStatus();
+		}
 	}
 
 	if (setLED == true) {
-	//	ledEnable(led3pin, 2000);
+		led3tick.attach(3000, led3Ticker);
 	}
 }
