@@ -1,7 +1,9 @@
 var state = {}
 
+
 var connection = new WebSocket('ws://' + location.hostname + ':81/', ['arduino']);
 connection.onopen = function () {
+	showPage();
 	console.log("Websocket Connected" + ' to ws://' + location.hostname + ':81/', ['arduino']);
 	connection.send('Connect ' + new Date());
 };
@@ -24,6 +26,11 @@ connection.onclose = function (event) {
 		console.log('[close] Connection died');
 	}
 };
+
+function showPage() {
+	document.getElementById("loader").style.display = "none";
+	document.getElementById("main").style.display = "block";
+  }
 
 function updateStatus(data) {
 	state = data;

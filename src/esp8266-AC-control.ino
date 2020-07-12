@@ -51,6 +51,7 @@ const int ledpin = LED_BUILTIN;
 const int led3pin = 14;
 /// ##### End user configuration ######
 
+bool firstRun = true;
 const bool enableMDNSServices = true;
 const size_t bufferSize = JSON_OBJECT_SIZE(22) + 300;  // adjust to size of data coming from tstat
 char wifi_config_name[] = "ESP Setup";				   // Default
@@ -303,7 +304,7 @@ void getVenstarStatus() {
 			tstat.activestage = doc["activestage"];		   // 0
 			tstat.fan = doc["fan"];						   // 0
 			tstat.fanstate = doc["fanstate"];			   // 0
-			tstat.tempunits = doc["tempunits"];			   // 0
+			tstat.tempunits = doc["tempunits"];			   // 0->Fahrenheit, 1->Celcius
 			tstat.schedule = doc["schedule"];			   // 0
 			tstat.schedulepart = doc["schedulepart"];	   // 0
 			tstat.away = doc["away"];					   // 0
@@ -351,6 +352,16 @@ void enableMDNS() {
 	// Configure mDNS
 	MDNS.addService("http", "tcp", port);  // Announce the ESP as an HTTP service
 	Serial.println("MDNS http service added. Hostname is set to " + String(host_name) + ".local:" + String(port));
+}
+
+uint8_t convertTemp (uint8_t temp, uint8_t type) {
+	if (type == 0)		// C to F
+		return (temp * (9/5) + 32);
+	else if (type == 1) 	// F to C
+		return (temp * (5/9) - 32);
+	else {
+		return 0;
+	}
 }
 
 //+=============================================================================
@@ -477,11 +488,12 @@ void controlAC() {
 				}
 			}
 		} else if (acState.extControl == true) {
-			if (tstat.currentState == 2 || tstat.currentState == 3) {
+			 
+			if (tstat.currentState == 2) {
+				acState.powerStatus = true;
 				acState.mode = 1;  // COOL_MODE
 				acState.temperature = 65;
 				acState.fan = 0;  // FAN_AUTO
-				sendDataToWeb();
 				ac.on();
 				ac.setTemp(acState.temperature);
 				ac.setFan(acState.fan);
@@ -489,9 +501,16 @@ void controlAC() {
 				delay(200);
 				ac.setEconoToggle(true);  // turn off Econo mode
 			}
+			else {
+				acState.powerStatus = false;
+				acState.mode = 0;
+				acState.fan = 0;
+				acState.temperature = tstat.cooltemp;
+			}
 		} else {
 			ac.off();
 		}
+		sendDataToWeb();
 		ac.send();
 		setLED = true;
 		dataWrite();
@@ -736,12 +755,13 @@ void setup() {
 //+=============================================================================
 //
 void loop() {
+	
 	webSocket.loop();  // constantly check for websocket events
 	ArduinoOTA.handle();
 	server.handleClient();
 	MDNS.update();
 	currentMillis = millis();
-	if (acState.extControl == true) {
+	if (acState.extControl == true || firstRun == true) {
 		if (currentMillis - previousMillis > 2000) {
 			previousMillis = currentMillis;
 			getVenstarStatus();
@@ -752,4 +772,5 @@ void loop() {
 	if (setLED == true) {
 		led3tick.attach(3000, led3Ticker);
 	}
+	firstRun = false;
 }
