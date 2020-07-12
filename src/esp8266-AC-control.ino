@@ -18,7 +18,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>  // Useful to access to ESP by hostname.local
-#include <FS.h>
+#include <LittleFS.h>
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
 #include <Ticker.h>	 // For LED status
@@ -126,11 +126,11 @@ bool handleFileRead(String path) {
 	String contentType = getContentType(path);
 	// Get the MIME type
 	String pathWithGz = path + ".gz";
-	if (SPIFFS.exists(pathWithGz) || SPIFFS.exists(path)) {
+	if (LittleFS.exists(pathWithGz) || LittleFS.exists(path)) {
 		// If the file exists, either as a compressed archive, or normal
-		if (SPIFFS.exists(pathWithGz))	// If there's a compressed version available
+		if (LittleFS.exists(pathWithGz))	// If there's a compressed version available
 			path += ".gz";				// Use the compressed verion
-		File file = SPIFFS.open(path, "r");
+		File file = LittleFS.open(path, "r");
 		//  Open the file
 		server.streamFile(file, contentType);
 		//  Send it to the client
@@ -145,7 +145,7 @@ bool handleFileRead(String path) {
 }
 
 //+=============================================================================
-// Upload a new file to the SPIFFS
+// Upload a new file to the LittleFS
 //
 void handleFileUpload() {
 	HTTPUpload &upload = server.upload();
@@ -155,8 +155,8 @@ void handleFileUpload() {
 			filename = "/" + filename;
 		}
 		// Serial.print("handleFileUpload Name: "); //Serial.println(filename);
-		fsUploadFile = SPIFFS.open(filename, "w");
-		// Open the file for writing in SPIFFS (create if it doesn't exist)
+		fsUploadFile = LittleFS.open(filename, "w");
+		// Open the file for writing in LittleFS (create if it doesn't exist)
 		filename = String();
 	} else if (upload.status == UPLOAD_FILE_WRITE) {
 		if (fsUploadFile) {
@@ -180,7 +180,7 @@ void handleFileUpload() {
 }
 
 //+=============================================================================
-// Upload a new file to the SPIFFS - File not found
+// Upload a new file to the LittleFS - File not found
 //
 void handleNotFound() {
 	String message = "File Not Found\n\n";
@@ -368,7 +368,7 @@ void serverSetup() {
 		ESP.restart();
 	});
 
-	server.serveStatic("/", SPIFFS, "/", "max-age=86400");
+	server.serveStatic("/", LittleFS, "/", "max-age=86400");
 
 	server.onNotFound(handleNotFound);
 }
@@ -490,9 +490,9 @@ void controlAC() {
 }
 
 void dataRead() {
-	if (SPIFFS.exists("/data.json")) {	// file exists, reading and loading
+	if (LittleFS.exists("/data.json")) {	// file exists, reading and loading
 		Serial.println("Reading data file");
-		File dataFile = SPIFFS.open("/data.json", "r");
+		File dataFile = LittleFS.open("/data.json", "r");
 		if (dataFile) {
 			Serial.println("Opened data file");
 			size_t size = dataFile.size();
@@ -538,7 +538,7 @@ void dataRead() {
 }
 
 void dataWrite(DynamicJsonDocument json) {
-	File dataFile = SPIFFS.open("/data.json", "w");
+	File dataFile = LittleFS.open("/data.json", "w");
 	if (!dataFile) {
 		Serial.println("Failed to open config file for writing");
 	}
@@ -565,12 +565,12 @@ bool setupWifi(bool resetConf) {
 	wifiManager.setSaveConfigCallback(saveConfigCallback);	// set config save notify callback
 	wifiManager.setConfigPortalTimeout(180);				// Reset device if on config portal for greater than 3 minutes
 
-	if (SPIFFS.begin()) {
+	if (LittleFS.begin()) {
 		Serial.println("Mounted file system");
-		if (SPIFFS.exists("/config.json")) {  // file exists, reading and loading
+		if (LittleFS.exists("/config.json")) {  // file exists, reading and loading
 
 			Serial.println("Reading config file");
-			File configFile = SPIFFS.open("/config.json", "r");
+			File configFile = LittleFS.open("/config.json", "r");
 			if (configFile) {
 				Serial.println("Opened config file");
 				size_t size = configFile.size();  // Allocate a buffer to store contents of the file.
@@ -621,7 +621,7 @@ bool setupWifi(bool resetConf) {
 		DynamicJsonDocument json(100);
 		json["hostname"] = host_name;
 		json["tstatIP"] = tstatIP;
-		File configFile = SPIFFS.open("/config.json", "w");
+		File configFile = LittleFS.open("/config.json", "w");
 		if (!configFile) {
 			Serial.println("Failed to open config file for writing");
 		}
