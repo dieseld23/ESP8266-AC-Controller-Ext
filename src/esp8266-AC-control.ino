@@ -88,8 +88,7 @@ struct tstatData {
 	int setpointdelta = 2;
 	int availablemodes = 0;
 };
-IRMideaAC ac(kIrLed);  // Library initialization, change it according to the
-					   // imported library file.
+IRMideaAC ac(kIrLed);  // Library initialization, change it according to the imported library file.
 tstatData tstat;
 File fsUploadFile;
 state acState;
@@ -335,8 +334,7 @@ void enableMDNS() {
 	Serial.println("ArduinoOTA started");
 
 	// Configure mDNS
-	MDNS.addService("http", "tcp",
-					port);	// Announce the ESP as an HTTP service
+	MDNS.addService("http", "tcp", port);	// Announce the ESP as an HTTP service
 	Serial.println("MDNS http service added. Hostname is set to " + String(host_name) + ".local:" + String(port));
 }
 
@@ -345,15 +343,12 @@ void enableMDNS() {
 //
 void serverSetup() {
 	server.on(
-		"/file-upload", HTTP_POST,
-		[]() {				   // if the client posts to the upload page
+		"/file-upload", HTTP_POST, []() {				   // if the client posts to the upload page
 			server.send(200);  // Send status 200 (OK) to tell the client we are ready to receive
 		},
 		handleFileUpload);	// Receive and save the file
 
-	server.on("/file-upload", HTTP_GET, []() {
-		// if the client requests the upload page
-
+	server.on("/file-upload", HTTP_GET, []() {				// if the client requests the upload page
 		String html = "<form method=\"post\" enctype=\"multipart/form-data\">";
 		html += "<input type=\"file\" name=\"name\">";
 		html += "<input class=\"button\" type=\"submit\" value=\"Upload\">";
@@ -401,8 +396,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 		} break;
 		case WStype_TEXT:  // if new text data is received
 			Serial.printf("[%u] get Text: %s\n", num, payload);
+
 			DynamicJsonDocument root(1024);
-			DeserializationError error = deserializeJson(root, server.arg("plain"));
+			DeserializationError error = deserializeJson(root, payload);
 			if (error) {
 				Serial.println("Deserialization Error");
 			} else {
@@ -421,12 +417,11 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 				if (root.containsKey("extControl")) {
 					acState.extControl = root["extControl"];
 				}
-				//String output;
-				//serializeJson(root, output);
-				//server.send(200, "text/plain", output);
+				// String output;
+				// serializeJson(root, output);
+				// server.send(200, "text/plain", output);
 
 				delay(200);
-
 				controlAC();
 			}
 			break;
@@ -467,8 +462,15 @@ void controlAC() {
 			acState.operation = 1;	// COOL_MODE
 			acState.temperature = 65;
 			acState.fan = 0;  // FAN_AUTO
-				webSocket.
-			webSocket.sendTXT(acS)
+
+			DynamicJsonDocument root(1024);
+			root["mode"] = acState.operation;
+			root["fan"] = acState.fan;
+			root["temp"] = acState.temperature;
+			root["power"] = acState.powerStatus;
+			String output;
+			serializeJson(root, output);
+			webSocket.sendTXT(1, output);  // first value is client id, I just put in 1 to fill it
 			ac.on();
 			ac.setTemp(acState.temperature);
 			ac.setFan(acState.fan);
@@ -482,59 +484,113 @@ void controlAC() {
 	} else {
 		ac.off();
 	}
-	ac.send();
 	setLED = true;
+	ac.send();
 }
 
+void dataSave() {
+	if (SPIFFS.begin()) {
+		Serial.println("Mounted file system");	
+		if (SPIFFS.exists("/data.json")) {					// file exists, reading and loading
+			Serial.println("Reading data file");
+			File configFile = SPIFFS.open("/data.json", "r");
+			if (configFile) {
+				Serial.println("Opened data file");
+				size_t size = configFile.size();
+				std::unique_ptr<char[]> buf(new char[size]);					// Allocate a buffer to store contents of the file.
+				configFile.readBytes(buf.get(), size);
+				DynamicJsonDocument root(1024);
+				DeserializationError error = deserializeJson(root, buf.get());
+				if (!error) {
+					Serial.println("\nParsed json");
+
+					if (root.containsKey("temp")) {
+						acState.temperature = (uint8_t)root["temp"];
+					}
+					if (root.containsKey("fan")) {
+						acState.fan = (uint8_t)root["fan"];
+					}
+					if (root.containsKey("power")) {
+						acState.powerStatus = root["power"];
+					}
+					if (root.containsKey("mode")) {
+						acState.operation = root["mode"];
+					}
+					if (root.containsKey("extControl")) {
+						acState.extControl = root["extControl"];
+					}
+
+				} else {
+					Serial.println("Failed to load data json config");
+				}
+			}
+		}
+
+		else {
+			Serial.println(" Initialize Data...");
+			DynamicJsonDocument json(1024);
+			json["temp"] = 86;
+			json["fan"] = 0;
+			json["power"] = false;
+			json["mode"] = 0;
+			json["extControl"] = true;
+			writeDataFile(json);
+		}
+	} else {
+		Serial.println("Failed to mount FS");
+	}
+}
+
+void writeDataFile(DynamicJsonDocument json) {
+	File dataFile = SPIFFS.open("/data.json", "w");
+	if (!dataFile) {
+		Serial.println("Failed to open config file for writing");
+	}
+
+	serializeJson(json, Serial);
+	Serial.println("");
+	Serial.println("Writing data file");
+	serializeJson(json, dataFile);
+	dataFile.close();
+	json.clear();
+	Serial.println("Data written successfully");
+}
 //+=============================================================================
 // Setup Wifi
 //
 bool setupWifi(bool resetConf) {
-	// start ticker with 0.5 because we start in AP mode and try to connect
-	led1tick.attach(0.5, led1Ticker);
-	// WiFiManager
-	// Local intialization. Once its business is done, there is no need to keep
-	// it around
+	led1tick.attach(0.5, led1Ticker);			// start ticker with 0.5 because we start in AP mode and try to connect
+	// WiFiManager Local intialization. Once its business is done, there is no need to keep it around
 	WiFiManager wifiManager;
-	// reset settings - for testing
-	if (resetConf)
+	if (resetConf)				// reset settings - for testing
 		wifiManager.resetSettings();
-
-	// set callback that gets called when connecting to previous WiFi fails, and
-	// enters Access Point mode
-	wifiManager.setAPCallback(configModeCallback);
-	// set config save notify callback
-	wifiManager.setSaveConfigCallback(saveConfigCallback);
-
-	// Reset device if on config portal for greater than 3 minutes
-	wifiManager.setConfigPortalTimeout(180);
+	
+	wifiManager.setAPCallback(configModeCallback);		// set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+	wifiManager.setSaveConfigCallback(saveConfigCallback);	// set config save notify callback
+	wifiManager.setConfigPortalTimeout(180);		// Reset device if on config portal for greater than 3 minutes
 
 	if (SPIFFS.begin()) {
 		Serial.println("Mounted file system");
-		if (SPIFFS.exists("/config.json")) {
-			// file exists, reading and loading
+		if (SPIFFS.exists("/config.json")) {						// file exists, reading and loading
+
 			Serial.println("Reading config file");
 			File configFile = SPIFFS.open("/config.json", "r");
 			if (configFile) {
 				Serial.println("Opened config file");
-				size_t size = configFile.size();
-				// Allocate a buffer to store contents of the file.
-				std::unique_ptr<char[]> buf(new char[size]);
-
+				size_t size = configFile.size();						// Allocate a buffer to store contents of the file.
+				std::unique_ptr<char[]> buf(new char[size]);		
 				configFile.readBytes(buf.get(), size);
 				DynamicJsonDocument json(1024);
 				DeserializationError error = deserializeJson(json, buf.get());
 				serializeJson(json, Serial);
 				if (!error) {
 					Serial.println("\nParsed json");
-
 					if (json.containsKey("hostname")) {
 						strncpy(host_name, json["hostname"], 20);
 					}
 					if (json.containsKey("tstatIP")) {
 						strncpy(tstatIP, json["tstatIP"], 20);
 					}
-
 				} else {
 					Serial.println("Failed to load json config");
 				}
@@ -549,13 +605,9 @@ bool setupWifi(bool resetConf) {
 
 	wifiManager.addParameter(&custom_hostname);
 	wifiManager.addParameter(&custom_tstatIP);
-	// fetches ssid and pass and tries to connect
-	// if it does not connect it starts an access point with the specified name
-	// and goes into a blocking loop awaiting configuration
-
+	// fetches ssid and pass and tries to connect, if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
 	if (!wifiManager.autoConnect(wifi_config_name)) {
-		Serial.println("Failed to connect and hit timeout");
-		// reset and try again, or maybe put it to deep sleep
+		Serial.println("Failed to connect and hit timeout");			// reset and try again, or maybe put it to deep sleep
 		delay(1000);
 		ESP.reset();
 		delay(2000);
@@ -564,24 +616,17 @@ bool setupWifi(bool resetConf) {
 	// if you get here you have connected to the WiFi
 	strncpy(host_name, custom_hostname.getValue(), 20);
 	strncpy(tstatIP, custom_tstatIP.getValue(), 20);
-
-	// Reset device if lost wifi Connection
-	WiFi.onStationModeDisconnected(&lostWifiCallback);
-
+	WiFi.onStationModeDisconnected(&lostWifiCallback);		// Reset device if lost wifi Connection
 	Serial.println("WiFi connected! User chose hostname '" + String(host_name) + "'");
-
-	// save the custom parameters to FS
-	if (shouldSaveConfig) {
+	if (shouldSaveConfig) {			// save the custom parameters to FS
 		Serial.println(" Config...");
 		DynamicJsonDocument json(100);
 		json["hostname"] = host_name;
 		json["tstatIP"] = tstatIP;
-
 		File configFile = SPIFFS.open("/config.json", "w");
 		if (!configFile) {
 			Serial.println("Failed to open config file for writing");
 		}
-
 		serializeJson(json, Serial);
 		Serial.println("");
 		Serial.println("Writing config file");
@@ -591,9 +636,7 @@ bool setupWifi(bool resetConf) {
 		Serial.println("Config written successfully");
 	}
 	led1tick.detach();
-
-	// keep LED on
-	digitalWrite(ledpin, LOW);
+	digitalWrite(ledpin, LOW); 		// keep LED on
 	return true;
 }
 
@@ -605,7 +648,6 @@ void setup() {
 	// pinMode(led2pin, OUTPUT);
 	pinMode(led3pin, OUTPUT);
 	Serial.begin(115200);
-	// Serial.println();
 	ac.begin();
 	delay(1000);
 
@@ -634,8 +676,8 @@ void setup() {
 
 	wifi_set_sleep_type(LIGHT_SLEEP_T);
 	digitalWrite(ledpin, LOW);
-	// Turn off the led in 2s
-	led1tick.attach(2, led1TickerDisable);
+
+	led1tick.attach(2, led1TickerDisable);			// Turn off the led in 2s
 
 	Serial.print("Local IP: ");
 	Serial.println(WiFi.localIP().toString());
