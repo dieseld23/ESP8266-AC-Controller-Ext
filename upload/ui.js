@@ -1,5 +1,24 @@
 var state = {}
 
+var connection = new WebSocket('ws://' + location.hostname + ':81/', ['arduino']);
+connection.onopen = function () {
+  console.log("Websocket Connected" + ' to ws://' + location.hostname + ':81/', ['arduino']);
+  connection.send('Connect ' + new Date());
+};
+connection.onerror = function (error) {
+  console.log('WebSocket Error ', error);
+};
+connection.onmessage = function (event) {
+  console.log('Server: ', event.data);
+  var msg = JSON.parse(event.data);
+  console.log(msg);
+  postData(msg);
+}
+
+connection.onclose = function () {
+  console.log('WebSocket connection closed');
+};
+
 function updateStatus() {
   $.ajax({
     type: 'GET',
@@ -59,6 +78,7 @@ function postData(t) {
   e.open("PUT", "state", !0);
   e.setRequestHeader("Content-Type", "application/json");
   console.log(JSON.stringify(t)), e.send(JSON.stringify(t));
+  connection.send(JSON.stringify(t));
 }
 
 function mode_onclick(mode) {

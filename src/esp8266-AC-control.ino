@@ -21,13 +21,12 @@
 #include <FS.h>
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
-#include <Ticker.h>		  // For LED status
+#include <Ticker.h>	 // For LED status
+#include <WebSocketsServer.h>
 #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager WiFi Configuration Magic
 #include <WiFiUdp.h>
-
 //// ###### User configuration space for AC library classes ##########
 #include <ir_Midea.h>  //  replace library based on your AC unit model, check https://github.com/crankyoldgit/IRremoteESP8266
-//#include <ir_Danby.h>
 // 0xA202FFFFFF7E  - energy saver
 // 0xA201FFFFFF7C  - ionizer
 
@@ -43,8 +42,32 @@
 #define ENERGY_SAVER kMideaACEnergySaver
 #define IONIZER kMideaACToggleSwingV
 
-class tstatData {
-   public:
+/// ##### Start user configuration ######
+const uint16_t kIrLed = 15;	 // ESP8266 GPIO pin to use for IR blaster.
+const int configpin = 10;
+int port = 80;
+const int ledpin = LED_BUILTIN;
+// const int led2pin = 16;
+const int led3pin = 14;
+/// ##### End user configuration ######
+
+const bool enableMDNSServices = true;
+const size_t bufferSize = JSON_OBJECT_SIZE(22) + 300;  // adjust to size of data coming from tstat
+char wifi_config_name[] = "ESP Setup";				   // Default
+char host_name[20] = "garageac";					   // Default
+char tstatIP[20] = "garagetstat";					   // Default Venstar Tstat IP Address
+unsigned long previousMillis = 0;
+unsigned long currentMillis = 0;
+bool shouldSaveConfig = false;	// Flag for saving data
+bool setLED = false;
+struct state {
+	uint8_t temperature = 85;
+	uint8_t fan = 0;
+	uint8_t operation = 0;
+	bool powerStatus;
+	bool extControl = true;
+};
+struct tstatData {
 	const char *name = "";
 	int mode = 0;
 	int currentState = 0;
@@ -65,41 +88,16 @@ class tstatData {
 	int setpointdelta = 2;
 	int availablemodes = 0;
 };
-
-/// ##### Start user configuration ######
-const uint16_t kIrLed = 15;	 // ESP8266 GPIO pin to use for IR blaster.
-const int configpin = 10;
-int port = 80;
-tstatData tstat;
-
 IRMideaAC ac(kIrLed);  // Library initialization, change it according to the
 					   // imported library file.
-const bool enableMDNSServices = true;
-const size_t bufferSize = JSON_OBJECT_SIZE(22) + 300;
-const int ledpin = LED_BUILTIN;
-//const int led2pin = 16;
-const int led3pin = 14;
-char wifi_config_name[] = "ESP Setup";
-char host_name[20] = "garageac";
-char tstatIP[20] = "garagetstat";  // Venstar Tstat IP Address
-/// ##### End user configuration ######
-unsigned long previousMillis = 0;
-unsigned long currentMillis = 0;
-bool shouldSaveConfig = false;	// Flag for saving data
-bool setLED = false;
-struct state {
-	uint8_t temperature = 85, fan = 0, operation = 0;
-	bool powerStatus;
-	bool extControl = true;
-};
-
+tstatData tstat;
 File fsUploadFile;
-
 state acState;
 Ticker led1tick;
 Ticker led3tick;
 ESP8266WebServer server(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
+WebSocketsServer webSocket(81);
 
 //+=============================================================================
 // convert the file extension to the MIME type
@@ -224,7 +222,7 @@ void led3Ticker() {
 	if (digitalRead(led3pin) == HIGH) {
 		led3TickerDisable();
 	}
-	digitalWrite(led3pin, HIGH);	  // set pin to the opposite state
+	digitalWrite(led3pin, HIGH);  // set pin to the opposite state
 	Serial.println("ledon");
 }
 
@@ -235,7 +233,6 @@ void led3TickerDisable() {
 	digitalWrite(led3pin, LOW);	 // Shut down the LED
 	led3tick.detach();			 // Stopping the ticker
 }
-
 
 //+=============================================================================
 // Callback notifying us of the need to save config
@@ -277,7 +274,7 @@ void getVenstarStatus() {
 	http.setReuse(true);
 	http.begin(client, url);
 	int httpCode = http.GET();
-	//Serial.println(httpCode);
+	// Serial.println(httpCode);
 	if (httpCode > 0) {
 		DynamicJsonDocument doc(bufferSize);
 		DeserializationError error = deserializeJson(doc, http.getString());
@@ -305,11 +302,9 @@ void getVenstarStatus() {
 			tstat.heattempmax = doc["heattempmax"];		   // 99
 			tstat.setpointdelta = doc["setpointdelta"];	   // 2
 			tstat.availablemodes = doc["availablemodes"];  // 0
-										   // Close connection
-			
 		}
-		//Serial.println(tstat.currentState);
-		http.end();		
+		// Serial.println(tstat.currentState);
+		http.end();	 // Close connection
 	}
 }
 
@@ -349,90 +344,10 @@ void enableMDNS() {
 // Setup HTTP server
 //
 void serverSetup() {
-	server.on("/state", HTTP_PUT, []() {
-		DynamicJsonDocument root(1024);
-		DeserializationError error = deserializeJson(root, server.arg("plain"));
-		if (error) {
-			server.send(404, "text/plain", "FAIL. " + server.arg("plain"));
-		} else {
-			if (root.containsKey("temp")) {
-				acState.temperature = (uint8_t)root["temp"];
-			}
-			if (root.containsKey("fan")) {
-				acState.fan = (uint8_t)root["fan"];
-			}
-			if (root.containsKey("power")) {
-				acState.powerStatus = root["power"];
-			}
-			if (root.containsKey("mode")) {
-				acState.operation = root["mode"];
-			}
-			if (root.containsKey("extControl")) {
-				acState.extControl = root["extControl"];
-			}
-			String output;
-			serializeJson(root, output);
-			server.send(200, "text/plain", output);
-
-			delay(200);
-
-			if (acState.powerStatus && acState.extControl == false) {
-				ac.on();
-				ac.setTemp(acState.temperature);
-				if (acState.operation == 0) {
-					ac.setMode(AUTO_MODE);
-					ac.setFan(FAN_AUTO);
-					acState.fan = 0;
-				} else if (acState.operation == 1) {
-					ac.setMode(COOL_MODE);
-				} else if (acState.operation == 2) {
-					ac.setMode(DRY_MODE);
-				} else if (acState.operation == 3) {
-					ac.setMode(HEAT_MODE);
-				} else if (acState.operation == 4) {
-					ac.setMode(FAN_MODE);
-				}
-
-				if (acState.operation != 0) {
-					if (acState.fan == 0) {
-						ac.setFan(FAN_AUTO);
-					} else if (acState.fan == 1) {
-						ac.setFan(FAN_MIN);
-					} else if (acState.fan == 2) {
-						ac.setFan(FAN_MED);
-					} else if (acState.fan == 3) {
-						ac.setFan(FAN_HI);
-					}
-				}
-			} else if (acState.extControl == true) { 
-				if (tstat.currentState == 2) {
-					acState.operation = 1;  // COOL_MODE
-					acState.temperature = 65;
-					acState.fan = 0; // FAN_AUTO
-					ac.on();
-					ac.setTemp(acState.temperature);
-					ac.setFan(acState.fan);
-					ac.send();						// economode is seperate message so send it as a seperate command
-					delay(200);						
-					ac.setEconoToggle(true);		// turn off Econo mode
-		
-				} else {
-					ac.off();
-				}
-			} else {
-				ac.off();
-			}
-			ac.send();
-			setLED = true;
-		}
-	});
-
 	server.on(
 		"/file-upload", HTTP_POST,
-		// if the client posts to the upload page
-		[]() {
-			// Send status 200 (OK) to tell the client we are ready to receive
-			server.send(200);
+		[]() {				   // if the client posts to the upload page
+			server.send(200);  // Send status 200 (OK) to tell the client we are ready to receive
 		},
 		handleFileUpload);	// Receive and save the file
 
@@ -451,18 +366,6 @@ void serverSetup() {
 		server.send(302, "text/plain", "");
 	});
 
-	server.on("/state", HTTP_GET, []() {
-		DynamicJsonDocument root(1024);
-		root["mode"] = acState.operation;
-		root["fan"] = acState.fan;
-		root["temp"] = acState.temperature;
-		root["power"] = acState.powerStatus;
-		root["extControl"] = acState.extControl;
-		String output;
-		serializeJson(root, output);
-		server.send(200, "text/plain", output);
-	});
-
 	server.on("/reset", []() {
 		server.send(200, "text/html", "reset");
 		delay(100);
@@ -472,6 +375,115 @@ void serverSetup() {
 	server.serveStatic("/", SPIFFS, "/", "max-age=86400");
 
 	server.onNotFound(handleNotFound);
+}
+
+//+=============================================================================
+// Setup/Start WebSocket
+//
+void startWebSocket() {					// Start a WebSocket server
+	webSocket.begin();					// start the websocket server
+	webSocket.onEvent(webSocketEvent);	// if there's an incomming websocket message, go to function 'webSocketEvent'
+	Serial.println("WebSocket server started.");
+}
+
+//+=============================================================================
+// WebSocket Event
+//
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght) {	// When a WebSocket message is received
+	switch (type) {
+		case WStype_DISCONNECTED:  // if the websocket is disconnected
+			Serial.printf("[%u] Disconnected!\n", num);
+			break;
+		case WStype_CONNECTED: {  // if a new websocket connection is established
+			IPAddress ip = webSocket.remoteIP(num);
+			Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+			// rainbow = false;  // Turn rainbow off when a new connection is established
+		} break;
+		case WStype_TEXT:  // if new text data is received
+			Serial.printf("[%u] get Text: %s\n", num, payload);
+			DynamicJsonDocument root(1024);
+			DeserializationError error = deserializeJson(root, server.arg("plain"));
+			if (error) {
+				Serial.println("Deserialization Error");
+			} else {
+				if (root.containsKey("temp")) {
+					acState.temperature = (uint8_t)root["temp"];
+				}
+				if (root.containsKey("fan")) {
+					acState.fan = (uint8_t)root["fan"];
+				}
+				if (root.containsKey("power")) {
+					acState.powerStatus = root["power"];
+				}
+				if (root.containsKey("mode")) {
+					acState.operation = root["mode"];
+				}
+				if (root.containsKey("extControl")) {
+					acState.extControl = root["extControl"];
+				}
+				//String output;
+				//serializeJson(root, output);
+				//server.send(200, "text/plain", output);
+
+				delay(200);
+
+				controlAC();
+			}
+			break;
+	}
+}
+
+void controlAC() {
+	if (acState.powerStatus && acState.extControl == false) {
+		ac.on();
+		ac.setTemp(acState.temperature);
+		if (acState.operation == 0) {
+			ac.setMode(AUTO_MODE);
+			ac.setFan(FAN_AUTO);
+			acState.fan = 0;
+		} else if (acState.operation == 1) {
+			ac.setMode(COOL_MODE);
+		} else if (acState.operation == 2) {
+			ac.setMode(DRY_MODE);
+		} else if (acState.operation == 3) {
+			ac.setMode(HEAT_MODE);
+		} else if (acState.operation == 4) {
+			ac.setMode(FAN_MODE);
+		}
+
+		if (acState.operation != 0) {
+			if (acState.fan == 0) {
+				ac.setFan(FAN_AUTO);
+			} else if (acState.fan == 1) {
+				ac.setFan(FAN_MIN);
+			} else if (acState.fan == 2) {
+				ac.setFan(FAN_MED);
+			} else if (acState.fan == 3) {
+				ac.setFan(FAN_HI);
+			}
+		}
+	} else if (acState.extControl == true) {
+		if (tstat.currentState == 2) {
+			acState.operation = 1;	// COOL_MODE
+			acState.temperature = 65;
+			acState.fan = 0;  // FAN_AUTO
+				webSocket.
+			webSocket.sendTXT(acS)
+			ac.on();
+			ac.setTemp(acState.temperature);
+			ac.setFan(acState.fan);
+			ac.send();	// economode is seperate message so send it as a seperate command
+			delay(200);
+			ac.setEconoToggle(true);  // turn off Econo mode
+
+		} else {
+			ac.off();
+		}
+	} else {
+		ac.off();
+	}
+	ac.send();
+	setLED = true;
 }
 
 //+=============================================================================
@@ -590,7 +602,7 @@ bool setupWifi(bool resetConf) {
 //
 void setup() {
 	pinMode(ledpin, OUTPUT);
-	//pinMode(led2pin, OUTPUT);
+	// pinMode(led2pin, OUTPUT);
 	pinMode(led3pin, OUTPUT);
 	Serial.begin(115200);
 	// Serial.println();
@@ -636,19 +648,21 @@ void setup() {
 
 	httpUpdateServer.setup(&server);
 	serverSetup();
+	startWebSocket();
 	server.begin();
 }
 
 //+=============================================================================
 //
 void loop() {
+	webSocket.loop();  // constantly check for websocket events
 	ArduinoOTA.handle();
 	server.handleClient();
 	MDNS.update();
 	currentMillis = millis();
 	if (acState.extControl == true) {
-		if(currentMillis - previousMillis > 2000) {
-			previousMillis = currentMillis;   
+		if (currentMillis - previousMillis > 2000) {
+			previousMillis = currentMillis;
 			getVenstarStatus();
 		}
 	}
