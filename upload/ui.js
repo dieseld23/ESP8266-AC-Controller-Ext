@@ -9,14 +9,20 @@ connection.onerror = function (error) {
 	console.log('WebSocket Error ', error);
 };
 connection.onmessage = function (event) {
-	console.log('Server: ', event.data);
+	//console.log('Server: ', event.data);
 	var msg = JSON.parse(event.data);
-	console.log(msg);
+	//console.log(msg);
 	updateStatus(msg);
-}
+};
 
-connection.onclose = function () {
-	console.log('WebSocket connection closed');
+connection.onclose = function (event) {
+	if (event.wasClean) {
+		console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+	} else {
+		// e.g. server process killed or network down
+		// event.code is usually 1006 in this case
+		console.log('[close] Connection died');
+	}
 };
 
 function updateStatus(data) {
@@ -39,8 +45,8 @@ function updateStatus(data) {
 
 	} else {
 		$("#extControl").text(" OFF");
-		$("#extControl-btn").removeClass("btn-info");
 		$("#extControl-btn").addClass("btn-default");
+		$("#extControl-btn").removeClass("btn-info");
 		$(".disableBtn").removeClass("disable-Btn");
 	}
 
@@ -51,6 +57,7 @@ function updateStatus(data) {
 
 function postData(t) {
 	updateStatus(t);
+	console.log(t);
 	connection.send(JSON.stringify(t));
 }
 
@@ -59,7 +66,6 @@ function mode_onclick(mode) {
 	setModeColor(mode);
 	postData(state);
 }
-
 
 function setModeColor(mode) {
 	$(".mode-btn").addClass("btn-default");

@@ -18,9 +18,9 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>  // Useful to access to ESP by hostname.local
-#include <LittleFS.h>
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
+#include <LittleFS.h>
 #include <Ticker.h>	 // For LED status
 #include <WebSocketsServer.h>
 #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager WiFi Configuration Magic
@@ -63,9 +63,10 @@ bool setLED = false;
 struct state {
 	uint8_t temperature = 85;
 	uint8_t fan = 0;
-	uint8_t operation = 0;
+	uint8_t mode = 0;
 	bool powerStatus;
 	bool extControl = true;
+	bool changed = false;
 };
 struct tstatData {
 	const char *name = "";
@@ -92,6 +93,7 @@ IRMideaAC ac(kIrLed);  // Library initialization, change it according to the imp
 tstatData tstat;
 File fsUploadFile;
 state acState;
+state acStateOld;
 Ticker led1tick;
 Ticker led3tick;
 ESP8266WebServer server(80);
@@ -128,8 +130,8 @@ bool handleFileRead(String path) {
 	String pathWithGz = path + ".gz";
 	if (LittleFS.exists(pathWithGz) || LittleFS.exists(path)) {
 		// If the file exists, either as a compressed archive, or normal
-		if (LittleFS.exists(pathWithGz))	// If there's a compressed version available
-			path += ".gz";				// Use the compressed verion
+		if (LittleFS.exists(pathWithGz))  // If there's a compressed version available
+			path += ".gz";				  // Use the compressed verion
 		File file = LittleFS.open(path, "r");
 		//  Open the file
 		server.streamFile(file, contentType);
@@ -142,6 +144,19 @@ bool handleFileRead(String path) {
 	// Serial.println(String("\tFile Not Found: ") + path);
 	// If the file doesn't exist, return false
 	return false;
+}
+
+//+=============================================================================
+// Compare the acState struct with previous data
+//
+bool compareACstate() {
+	if (acState.powerStatus != acStateOld.powerStatus || acState.extControl != acStateOld.extControl || acState.extControl != acStateOld.extControl ||
+		acState.mode != acStateOld.mode || acState.fan != acStateOld.fan || acState.temperature != acStateOld.temperature) {
+		acStateOld = acState;
+		return true;
+	} else {
+		return false;
+	}
 }
 
 //+=============================================================================
@@ -394,6 +409,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 			IPAddress ip = webSocket.remoteIP(num);
 			Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
 			// rainbow = false;  // Turn rainbow off when a new connection is established
+			sendDataToWeb();
 		} break;
 		case WStype_TEXT:  // if new text data is received
 			Serial.printf("[%u] get Text: %s\n", num, payload);
@@ -401,7 +417,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 			DynamicJsonDocument root(1024);
 			DeserializationError error = deserializeJson(root, payload);
 			if (error) {
-				Serial.println("Deserialization Error");
+				// Serial.println("Deserialization Error");
 			} else {
 				if (root.containsKey("temp")) {
 					acState.temperature = (uint8_t)root["temp"];
@@ -413,7 +429,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 					acState.powerStatus = root["power"];
 				}
 				if (root.containsKey("mode")) {
-					acState.operation = root["mode"];
+					acState.mode = root["mode"];
 				}
 				if (root.containsKey("extControl")) {
 					acState.extControl = root["extControl"];
@@ -423,74 +439,82 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 				// server.send(200, "text/plain", output);
 
 				delay(200);
-				controlAC();
 			}
 			break;
 	}
 }
-
+//+=============================================================================
+//  AC IR Control Function
+//
 void controlAC() {
-	if (acState.powerStatus && acState.extControl == false) {
-		ac.on();
-		ac.setTemp(acState.temperature);
-		if (acState.operation == 0) {
-			ac.setMode(AUTO_MODE);
-			ac.setFan(FAN_AUTO);
-			acState.fan = 0;
-		} else if (acState.operation == 1) {
-			ac.setMode(COOL_MODE);
-		} else if (acState.operation == 2) {
-			ac.setMode(DRY_MODE);
-		} else if (acState.operation == 3) {
-			ac.setMode(HEAT_MODE);
-		} else if (acState.operation == 4) {
-			ac.setMode(FAN_MODE);
-		}
-
-		if (acState.operation != 0) {
-			if (acState.fan == 0) {
-				ac.setFan(FAN_AUTO);
-			} else if (acState.fan == 1) {
-				ac.setFan(FAN_MIN);
-			} else if (acState.fan == 2) {
-				ac.setFan(FAN_MED);
-			} else if (acState.fan == 3) {
-				ac.setFan(FAN_HI);
-			}
-		}
-	} else if (acState.extControl == true) {
-		if (tstat.currentState == 2) {
-			acState.operation = 1;	// COOL_MODE
-			acState.temperature = 65;
-			acState.fan = 0;  // FAN_AUTO
-
-			DynamicJsonDocument root(1024);
-			root["mode"] = acState.operation;
-			root["fan"] = acState.fan;
-			root["temp"] = acState.temperature;
-			root["power"] = acState.powerStatus;
-			String output;
-			serializeJson(root, output);
-			webSocket.sendTXT(1, output);  // first value is client id, I just put in 1 to fill it
+	if (compareACstate()) {
+		if (acState.powerStatus == true && acState.extControl == false) {
 			ac.on();
 			ac.setTemp(acState.temperature);
-			ac.setFan(acState.fan);
-			ac.send();	// economode is seperate message so send it as a seperate command
-			delay(200);
-			ac.setEconoToggle(true);  // turn off Econo mode
+			if (acState.mode == 0) {
+				ac.setMode(AUTO_MODE);
+				ac.setFan(FAN_AUTO);
+				acState.fan = 0;
+			} else if (acState.mode == 1) {
+				ac.setMode(COOL_MODE);
+			} else if (acState.mode == 2) {
+				ac.setMode(DRY_MODE);
+			} else if (acState.mode == 3) {
+				ac.setMode(HEAT_MODE);
+			} else if (acState.mode == 4) {
+				ac.setMode(FAN_MODE);
+			}
 
+			if (acState.mode != 0) {
+				if (acState.fan == 0) {
+					ac.setFan(FAN_AUTO);
+				} else if (acState.fan == 1) {
+					ac.setFan(FAN_MIN);
+				} else if (acState.fan == 2) {
+					ac.setFan(FAN_MED);
+				} else if (acState.fan == 3) {
+					ac.setFan(FAN_HI);
+				}
+			}
+		} else if (acState.extControl == true) {
+			if (tstat.currentState == 2 || tstat.currentState == 3) {
+				acState.mode = 1;  // COOL_MODE
+				acState.temperature = 65;
+				acState.fan = 0;  // FAN_AUTO
+				sendDataToWeb();
+				ac.on();
+				ac.setTemp(acState.temperature);
+				ac.setFan(acState.fan);
+				ac.send();	// economode is seperate message so send it as a seperate command
+				delay(200);
+				ac.setEconoToggle(true);  // turn off Econo mode
+			}
 		} else {
 			ac.off();
 		}
-	} else {
-		ac.off();
+		ac.send();
+		setLED = true;
+		dataWrite();
 	}
-	setLED = true;
-	ac.send();
 }
 
-void dataRead() {
-	if (LittleFS.exists("/data.json")) {	// file exists, reading and loading
+void sendDataToWeb() {
+	DynamicJsonDocument root(1024);
+	root["mode"] = acState.mode;
+	root["fan"] = acState.fan;
+	root["temp"] = acState.temperature;
+	root["power"] = acState.powerStatus;
+	root["extControl"] = acState.extControl;
+	String output;
+	serializeJson(root, output);
+	webSocket.sendTXT(0, output);  // first value is client id
+}
+
+//+=============================================================================
+//  Initialize data from file or make new file
+//
+void dataInitialize() {
+	if (LittleFS.exists("/data.json")) {  // file exists, reading and loading
 		Serial.println("Reading data file");
 		File dataFile = LittleFS.open("/data.json", "r");
 		if (dataFile) {
@@ -502,23 +526,32 @@ void dataRead() {
 			DeserializationError error = deserializeJson(root, buf.get());
 			if (!error) {
 				Serial.println("\nParsed json");
-
 				if (root.containsKey("temp")) {
 					acState.temperature = (uint8_t)root["temp"];
+				} else {
+					acState.temperature = 85;
 				}
 				if (root.containsKey("fan")) {
 					acState.fan = (uint8_t)root["fan"];
+				} else {
+					acState.fan = 0;
 				}
 				if (root.containsKey("power")) {
 					acState.powerStatus = root["power"];
+				} else {
+					acState.powerStatus = false;
 				}
 				if (root.containsKey("mode")) {
-					acState.operation = root["mode"];
+					acState.mode = root["mode"];
+				} else {
+					acState.mode = 0;
 				}
 				if (root.containsKey("extControl")) {
 					acState.extControl = root["extControl"];
+				} else {
+					acState.extControl = true;
 				}
-			dataFile.close();
+				dataFile.close();
 			} else {
 				Serial.println("Failed to load data json config");
 			}
@@ -527,17 +560,24 @@ void dataRead() {
 
 	else {
 		Serial.println(" Initialize Data...");
-		DynamicJsonDocument json(1024);
-		json["temp"] = 86;
-		json["fan"] = 0;
-		json["power"] = false;
-		json["mode"] = 0;
-		json["extControl"] = true;
-		dataWrite(json);
+		acState.temperature = 85;
+		acState.fan = 0;
+		acState.powerStatus = false;
+		acState.mode = 0;
+		acState.extControl = true;
+		dataWrite();
 	}
 }
-
-void dataWrite(DynamicJsonDocument json) {
+//+=============================================================================
+//  Write data to file to have the same data on next power up
+//
+void dataWrite() {
+	DynamicJsonDocument json(1024);
+	json["temp"] = acState.temperature;
+	json["fan"] = acState.fan;
+	json["power"] = acState.powerStatus;
+	json["mode"] = acState.mode;
+	json["extControl"] = acState.extControl;
 	File dataFile = LittleFS.open("/data.json", "w");
 	if (!dataFile) {
 		Serial.println("Failed to open config file for writing");
@@ -567,7 +607,7 @@ bool setupWifi(bool resetConf) {
 
 	if (LittleFS.begin()) {
 		Serial.println("Mounted file system");
-		if (LittleFS.exists("/config.json")) {  // file exists, reading and loading
+		if (LittleFS.exists("/config.json")) {	// file exists, reading and loading
 
 			Serial.println("Reading config file");
 			File configFile = LittleFS.open("/config.json", "r");
@@ -590,7 +630,7 @@ bool setupWifi(bool resetConf) {
 				} else {
 					Serial.println("Failed to load json config");
 				}
-			configFile.close();
+				configFile.close();
 			}
 		}
 	} else {
@@ -688,6 +728,7 @@ void setup() {
 
 	httpUpdateServer.setup(&server);
 	serverSetup();
+	dataInitialize();
 	startWebSocket();
 	server.begin();
 }
@@ -704,9 +745,10 @@ void loop() {
 		if (currentMillis - previousMillis > 2000) {
 			previousMillis = currentMillis;
 			getVenstarStatus();
+			// Serial.println(tstat.currentState);
 		}
 	}
-
+	controlAC();
 	if (setLED == true) {
 		led3tick.attach(3000, led3Ticker);
 	}
