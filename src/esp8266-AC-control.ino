@@ -334,7 +334,7 @@ void enableMDNS() {
 	Serial.println("ArduinoOTA started");
 
 	// Configure mDNS
-	MDNS.addService("http", "tcp", port);	// Announce the ESP as an HTTP service
+	MDNS.addService("http", "tcp", port);  // Announce the ESP as an HTTP service
 	Serial.println("MDNS http service added. Hostname is set to " + String(host_name) + ".local:" + String(port));
 }
 
@@ -343,12 +343,13 @@ void enableMDNS() {
 //
 void serverSetup() {
 	server.on(
-		"/file-upload", HTTP_POST, []() {				   // if the client posts to the upload page
+		"/file-upload", HTTP_POST,
+		[]() {				   // if the client posts to the upload page
 			server.send(200);  // Send status 200 (OK) to tell the client we are ready to receive
 		},
 		handleFileUpload);	// Receive and save the file
 
-	server.on("/file-upload", HTTP_GET, []() {				// if the client requests the upload page
+	server.on("/file-upload", HTTP_GET, []() {	// if the client requests the upload page
 		String html = "<form method=\"post\" enctype=\"multipart/form-data\">";
 		html += "<input type=\"file\" name=\"name\">";
 		html += "<input class=\"button\" type=\"submit\" value=\"Upload\">";
@@ -488,60 +489,55 @@ void controlAC() {
 	ac.send();
 }
 
-void dataSave() {
-	if (SPIFFS.begin()) {
-		Serial.println("Mounted file system");	
-		if (SPIFFS.exists("/data.json")) {					// file exists, reading and loading
-			Serial.println("Reading data file");
-			File configFile = SPIFFS.open("/data.json", "r");
-			if (configFile) {
-				Serial.println("Opened data file");
-				size_t size = configFile.size();
-				std::unique_ptr<char[]> buf(new char[size]);					// Allocate a buffer to store contents of the file.
-				configFile.readBytes(buf.get(), size);
-				DynamicJsonDocument root(1024);
-				DeserializationError error = deserializeJson(root, buf.get());
-				if (!error) {
-					Serial.println("\nParsed json");
+void dataRead() {
+	if (SPIFFS.exists("/data.json")) {	// file exists, reading and loading
+		Serial.println("Reading data file");
+		File dataFile = SPIFFS.open("/data.json", "r");
+		if (dataFile) {
+			Serial.println("Opened data file");
+			size_t size = dataFile.size();
+			std::unique_ptr<char[]> buf(new char[size]);  // Allocate a buffer to store contents of the file.
+			dataFile.readBytes(buf.get(), size);
+			DynamicJsonDocument root(1024);
+			DeserializationError error = deserializeJson(root, buf.get());
+			if (!error) {
+				Serial.println("\nParsed json");
 
-					if (root.containsKey("temp")) {
-						acState.temperature = (uint8_t)root["temp"];
-					}
-					if (root.containsKey("fan")) {
-						acState.fan = (uint8_t)root["fan"];
-					}
-					if (root.containsKey("power")) {
-						acState.powerStatus = root["power"];
-					}
-					if (root.containsKey("mode")) {
-						acState.operation = root["mode"];
-					}
-					if (root.containsKey("extControl")) {
-						acState.extControl = root["extControl"];
-					}
-
-				} else {
-					Serial.println("Failed to load data json config");
+				if (root.containsKey("temp")) {
+					acState.temperature = (uint8_t)root["temp"];
 				}
+				if (root.containsKey("fan")) {
+					acState.fan = (uint8_t)root["fan"];
+				}
+				if (root.containsKey("power")) {
+					acState.powerStatus = root["power"];
+				}
+				if (root.containsKey("mode")) {
+					acState.operation = root["mode"];
+				}
+				if (root.containsKey("extControl")) {
+					acState.extControl = root["extControl"];
+				}
+			dataFile.close();
+			} else {
+				Serial.println("Failed to load data json config");
 			}
 		}
+	}
 
-		else {
-			Serial.println(" Initialize Data...");
-			DynamicJsonDocument json(1024);
-			json["temp"] = 86;
-			json["fan"] = 0;
-			json["power"] = false;
-			json["mode"] = 0;
-			json["extControl"] = true;
-			writeDataFile(json);
-		}
-	} else {
-		Serial.println("Failed to mount FS");
+	else {
+		Serial.println(" Initialize Data...");
+		DynamicJsonDocument json(1024);
+		json["temp"] = 86;
+		json["fan"] = 0;
+		json["power"] = false;
+		json["mode"] = 0;
+		json["extControl"] = true;
+		dataWrite(json);
 	}
 }
 
-void writeDataFile(DynamicJsonDocument json) {
+void dataWrite(DynamicJsonDocument json) {
 	File dataFile = SPIFFS.open("/data.json", "w");
 	if (!dataFile) {
 		Serial.println("Failed to open config file for writing");
@@ -559,26 +555,26 @@ void writeDataFile(DynamicJsonDocument json) {
 // Setup Wifi
 //
 bool setupWifi(bool resetConf) {
-	led1tick.attach(0.5, led1Ticker);			// start ticker with 0.5 because we start in AP mode and try to connect
+	led1tick.attach(0.5, led1Ticker);  // start ticker with 0.5 because we start in AP mode and try to connect
 	// WiFiManager Local intialization. Once its business is done, there is no need to keep it around
 	WiFiManager wifiManager;
-	if (resetConf)				// reset settings - for testing
+	if (resetConf)	// reset settings - for testing
 		wifiManager.resetSettings();
-	
-	wifiManager.setAPCallback(configModeCallback);		// set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+
+	wifiManager.setAPCallback(configModeCallback);	// set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
 	wifiManager.setSaveConfigCallback(saveConfigCallback);	// set config save notify callback
-	wifiManager.setConfigPortalTimeout(180);		// Reset device if on config portal for greater than 3 minutes
+	wifiManager.setConfigPortalTimeout(180);				// Reset device if on config portal for greater than 3 minutes
 
 	if (SPIFFS.begin()) {
 		Serial.println("Mounted file system");
-		if (SPIFFS.exists("/config.json")) {						// file exists, reading and loading
+		if (SPIFFS.exists("/config.json")) {  // file exists, reading and loading
 
 			Serial.println("Reading config file");
 			File configFile = SPIFFS.open("/config.json", "r");
 			if (configFile) {
 				Serial.println("Opened config file");
-				size_t size = configFile.size();						// Allocate a buffer to store contents of the file.
-				std::unique_ptr<char[]> buf(new char[size]);		
+				size_t size = configFile.size();  // Allocate a buffer to store contents of the file.
+				std::unique_ptr<char[]> buf(new char[size]);
 				configFile.readBytes(buf.get(), size);
 				DynamicJsonDocument json(1024);
 				DeserializationError error = deserializeJson(json, buf.get());
@@ -594,6 +590,7 @@ bool setupWifi(bool resetConf) {
 				} else {
 					Serial.println("Failed to load json config");
 				}
+			configFile.close();
 			}
 		}
 	} else {
@@ -605,9 +602,10 @@ bool setupWifi(bool resetConf) {
 
 	wifiManager.addParameter(&custom_hostname);
 	wifiManager.addParameter(&custom_tstatIP);
-	// fetches ssid and pass and tries to connect, if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
+	// fetches ssid and pass and tries to connect, if it does not connect it starts an access point with the specified name and goes into a blocking loop
+	// awaiting configuration
 	if (!wifiManager.autoConnect(wifi_config_name)) {
-		Serial.println("Failed to connect and hit timeout");			// reset and try again, or maybe put it to deep sleep
+		Serial.println("Failed to connect and hit timeout");  // reset and try again, or maybe put it to deep sleep
 		delay(1000);
 		ESP.reset();
 		delay(2000);
@@ -616,9 +614,9 @@ bool setupWifi(bool resetConf) {
 	// if you get here you have connected to the WiFi
 	strncpy(host_name, custom_hostname.getValue(), 20);
 	strncpy(tstatIP, custom_tstatIP.getValue(), 20);
-	WiFi.onStationModeDisconnected(&lostWifiCallback);		// Reset device if lost wifi Connection
+	WiFi.onStationModeDisconnected(&lostWifiCallback);	// Reset device if lost wifi Connection
 	Serial.println("WiFi connected! User chose hostname '" + String(host_name) + "'");
-	if (shouldSaveConfig) {			// save the custom parameters to FS
+	if (shouldSaveConfig) {	 // save the custom parameters to FS
 		Serial.println(" Config...");
 		DynamicJsonDocument json(100);
 		json["hostname"] = host_name;
@@ -636,7 +634,7 @@ bool setupWifi(bool resetConf) {
 		Serial.println("Config written successfully");
 	}
 	led1tick.detach();
-	digitalWrite(ledpin, LOW); 		// keep LED on
+	digitalWrite(ledpin, LOW);	// keep LED on
 	return true;
 }
 
@@ -677,7 +675,7 @@ void setup() {
 	wifi_set_sleep_type(LIGHT_SLEEP_T);
 	digitalWrite(ledpin, LOW);
 
-	led1tick.attach(2, led1TickerDisable);			// Turn off the led in 2s
+	led1tick.attach(2, led1TickerDisable);	// Turn off the led in 2s
 
 	Serial.print("Local IP: ");
 	Serial.println(WiFi.localIP().toString());
