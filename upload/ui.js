@@ -1,5 +1,9 @@
+import { WebsocketHeartbeatJs } from './websocketheartbeat.js';
+
 var state = {}
 
+function loadPage () {
+}
 
 var connection = new WebSocket('ws://' + location.hostname + ':81/', ['arduino']);
 connection.onopen = function () {
@@ -16,7 +20,6 @@ connection.onmessage = function (event) {
 	//console.log(msg);
 	updateStatus(msg);
 };
-
 connection.onclose = function (event) {
 	if (event.wasClean) {
 		console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
@@ -25,7 +28,17 @@ connection.onclose = function (event) {
 		// event.code is usually 1006 in this case
 		console.log('[close] Connection died');
 	}
-};
+}; 
+
+
+function heartbeat() {
+	if (!connection || connection.readyState !== 1) {
+		return;
+	}
+	connection.send("heartbeat");
+	setTimeout(heartbeat, 500);
+  }
+  
 
 function showPage() {
 	document.getElementById("loader").style.display = "none";
@@ -166,3 +179,4 @@ function temp_onclick(temp) {
 	$("#target_temp").text(state["temp"] + " F");
 	postData(state);
 }
+

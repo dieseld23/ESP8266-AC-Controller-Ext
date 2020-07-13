@@ -404,7 +404,9 @@ void serverSetup() {
 //
 void startWebSocket() {					// Start a WebSocket server
 	webSocket.begin();					// start the websocket server
-	webSocket.onEvent(webSocketEvent);	// if there's an incomming websocket message, go to function 'webSocketEvent'
+	webSocket.onEvent(webSocketEvent);	// if there's an incoming websocket message, go to function 'webSocketEvent'
+  
+  
 	Serial.println("WebSocket server started.");
 }
 
@@ -413,18 +415,19 @@ void startWebSocket() {					// Start a WebSocket server
 //
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght) {	// When a WebSocket message is received
 	switch (type) {
-		case WStype_DISCONNECTED:  // if the websocket is disconnected
+		case WStype_DISCONNECTED: {  // if the websocket is disconnected
 			Serial.printf("[%u] Disconnected!\n", num);
 			break;
+		}
 		case WStype_CONNECTED: {  // if a new websocket connection is established
 			IPAddress ip = webSocket.remoteIP(num);
 			Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
 			// rainbow = false;  // Turn rainbow off when a new connection is established
 			sendDataToWeb();
-		} break;
-		case WStype_TEXT:  // if new text data is received
+		 	break;
+		}
+		case WStype_TEXT: { // if new text data is received
 			Serial.printf("[%u] get Text: %s\n", num, payload);
-
 			DynamicJsonDocument root(1024);
 			DeserializationError error = deserializeJson(root, payload);
 			if (error) {
@@ -451,7 +454,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 
 				delay(200);
 			}
-			break;
+			break; 
+		}
 	}
 }
 //+=============================================================================
@@ -755,7 +759,7 @@ void setup() {
 //+=============================================================================
 //
 void loop() {
-	
+
 	webSocket.loop();  // constantly check for websocket events
 	ArduinoOTA.handle();
 	server.handleClient();
