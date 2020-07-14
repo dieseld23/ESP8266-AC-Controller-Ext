@@ -12,9 +12,9 @@ Once powered on, connect to Wifi SSID ESP Setup (IP 192.168.1.4). Fill out detai
 
 ## Credits:
 
-AC-Control: https://github.com/mariusmotea/esp8266-AC-control.git
-Websocket Heartbeat: https://github.com/zimv/websocket-heartbeat-js
-Websocket: https://github.com/Links2004/arduinoWebSockets
-IR Blaster: https://github.com/mdhiggins/ESP8266-HTTP-IR-Blaster.git
-Interface: https://github.com/ael-code/daikin-control  
-IR library: https://github.com/crankyoldgit/IRremoteESP8266
+AC-Control: https://github.com/mariusmotea/esp8266-AC-control.git<br>
+Websocket Heartbeat: https://github.com/zimv/websocket-heartbeat-js<br>
+Websocket: https://github.com/Links2004/arduinoWebSockets<br>
+IR Blaster: https://github.com/mdhiggins/ESP8266-HTTP-IR-Blaster.git<br>
+Interface: https://github.com/ael-code/daikin-control<br>
+IR library: https://github.com/crankyoldgit/IRremoteESP8266<br>
