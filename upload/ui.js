@@ -1,10 +1,32 @@
-import { WebsocketHeartbeatJs } from './websocketheartbeat.js';
 
-var state = {}
+
+
+const options = {
+    url: 'ws://' + location.hostname + ':81/',
+    pingTimeout: 7000, 
+    pongTimeout: 5000, 
+    reconnectTimeout: 2000,
+    pingMsg: "heartbeat"
+}
+var websocketHeartbeatJs = new WebsocketHeartbeatJs(options);
+
+websocketHeartbeatJs.onopen = function () {
+	showPage();
+	console.log("Websocket Connected" + ' to ws://' + location.hostname + ':81/', ['arduino']);
+
+}
+websocketHeartbeatJs.onmessage = function (e) {
+	console.log(`onmessage: ${e.data}`);
+	var msg = JSON.parse(e.data);
+	updateStatus(msg);
+}
+websocketHeartbeatJs.onreconnect = function () {
+    console.log('Reconnecting...');
+}
 
 function loadPage () {
 }
-
+/*
 var connection = new WebSocket('ws://' + location.hostname + ':81/', ['arduino']);
 connection.onopen = function () {
 	showPage();
@@ -18,6 +40,7 @@ connection.onmessage = function (event) {
 	//console.log('Server: ', event.data);
 	var msg = JSON.parse(event.data);
 	//console.log(msg);
+	heartbeat();
 	updateStatus(msg);
 };
 connection.onclose = function (event) {
@@ -25,21 +48,15 @@ connection.onclose = function (event) {
 		console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
 	} else {
 		// e.g. server process killed or network down
-		// event.code is usually 1006 in this case
+		// event.code is usually 1006 in WebsocketHeartbeatJs case
 		console.log('[close] Connection died');
 	}
 }; 
 
-
 function heartbeat() {
-	if (!connection || connection.readyState !== 1) {
-		return;
-	}
-	connection.send("heartbeat");
-	setTimeout(heartbeat, 500);
-  }
-  
 
+}
+*/
 function showPage() {
 	document.getElementById("loader").style.display = "none";
 	document.getElementById("main").style.display = "block";
@@ -78,7 +95,7 @@ function updateStatus(data) {
 function postData(t) {
 	updateStatus(t);
 	console.log(t);
-	connection.send(JSON.stringify(t));
+	websocketHeartbeatJs.send(JSON.stringify(t));
 }
 
 function mode_onclick(mode) {
@@ -179,4 +196,3 @@ function temp_onclick(temp) {
 	$("#target_temp").text(state["temp"] + " F");
 	postData(state);
 }
-

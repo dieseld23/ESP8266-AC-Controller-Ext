@@ -1,15 +1,16 @@
-/* Copyright 2019 Motea Marius
+// ESP8266 AC Controller with access to external thermostat
+// Author: Dan Maslach
 
-  This example code will create a webserver that will provide basic control to
-  AC units using the web application build with javascript/css. User config zone
-  need to be updated if a different class than Collix need to be used.
-  Javasctipt file may also require minor changes as in current version it will
-  not allow to set fan speed if Auto mode is selected (required for Midea).
+// Code initially based on these libraries:
+// ESP8266 AC Control -  https://github.com/mariusmotea/esp8266-AC-control (significantly)
+// ESP8266 HTTP IR Blaster - https://github.com/mdhiggins/ESP8266-HTTP-IR-Blaster
+// Websocket Heartbeat - https://github.com/zimv/websocket-heartbeat-js
 
-*/
+// License: MIT
 
-// Modification to code - Dan Maslach 7/7/2020 */
-// Additions mostly from https://github.com/mdhiggins/ESP8266-HTTP-IR-Blaster */
+// This code creates a webserver that will provide control to AC units using the web application build with javascript/css.
+// User config zone need to be updated if a different AC unit is used.
+// Control done via online interface or external control such as a Venstar Thermostat with their REST API
 
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
@@ -298,25 +299,25 @@ void getVenstarStatus() {
 			http.end();	 // Close connection
 		} else {
 			// JsonObject doc = jsonDocument.as<JsonObject>();
-			tstat.name = doc["name"];					   // "GarageAC1234567890"
-			tstat.mode = doc["mode"];					   // 0
-			tstat.currentState = doc["state"];			   // 0
-			tstat.activestage = doc["activestage"];		   // 0
-			tstat.fan = doc["fan"];						   // 0
-			tstat.fanstate = doc["fanstate"];			   // 0
-			tstat.tempunits = doc["tempunits"];			   // 0->Fahrenheit, 1->Celcius
-			tstat.schedule = doc["schedule"];			   // 0
-			tstat.schedulepart = doc["schedulepart"];	   // 0
-			tstat.away = doc["away"];					   // 0
-			tstat.spacetemp = doc["spacetemp"];			   // 79
-			tstat.heattemp = doc["heattemp"];			   // 78
-			tstat.cooltemp = doc["cooltemp"];			   // 75
-			tstat.cooltempmin = doc["cooltempmin"];		   // 35
-			tstat.cooltempmax = doc["cooltempmax"];		   // 99
-			tstat.heattempmin = doc["heattempmin"];		   // 35
-			tstat.heattempmax = doc["heattempmax"];		   // 99
-			tstat.setpointdelta = doc["setpointdelta"];	   // 2
-			tstat.availablemodes = doc["availablemodes"];  // 0
+			tstat.name = doc["name"];									 // "GarageAC1234567890"
+			tstat.mode = doc["mode"];									 // 0
+			tstat.currentState = doc["state"];							 // 0
+			tstat.activestage = doc["activestage"];						 // 0
+			tstat.fan = doc["fan"];										 // 0
+			tstat.fanstate = doc["fanstate"];							 // 0
+			tstat.tempunits = doc["tempunits"];							 // 0->Fahrenheit, 1->Celcius
+			tstat.schedule = doc["schedule"];							 // 0
+			tstat.schedulepart = doc["schedulepart"];					 // 0
+			tstat.away = doc["away"];									 // 0
+			tstat.spacetemp = convertTemp(doc["spacetemp"], 0);			 // 79
+			tstat.heattemp = convertTemp(doc["heattemp"], 0);			 // 78
+			tstat.cooltemp = convertTemp(doc["cooltemp"], 0);			 // 75
+			tstat.cooltempmin = convertTemp(doc["cooltempmin"], 0);		 // 35
+			tstat.cooltempmax = convertTemp(doc["cooltempmax"], 0);		 // 99
+			tstat.heattempmin = convertTemp(doc["heattempmin"], 0);		 // 35
+			tstat.heattempmax = convertTemp(doc["heattempmax"], 0);		 // 99
+			tstat.setpointdelta = convertTemp(doc["setpointdelta"], 0);	 // 2
+			tstat.availablemodes = doc["availablemodes"];				 // 0
 		}
 		// Serial.println(tstat.currentState);
 		http.end();	 // Close connection
@@ -354,11 +355,14 @@ void enableMDNS() {
 	Serial.println("MDNS http service added. Hostname is set to " + String(host_name) + ".local:" + String(port));
 }
 
-uint8_t convertTemp (uint8_t temp, uint8_t type) {
-	if (type == 0)		// C to F
-		return (temp * (9/5) + 32);
-	else if (type == 1) 	// F to C
-		return (temp * (5/9) - 32);
+//+=============================================================================
+// Convert Temp units if necessary
+//
+uint8_t convertTemp(float temp, uint8_t type) {
+	if (type == 0)	// C to F
+		return round((temp * (9 / 5) + 32));
+	else if (type == 1)	 // F to C
+		return round((temp * (5 / 9) - 32));
 	else {
 		return 0;
 	}
@@ -405,8 +409,6 @@ void serverSetup() {
 void startWebSocket() {					// Start a WebSocket server
 	webSocket.begin();					// start the websocket server
 	webSocket.onEvent(webSocketEvent);	// if there's an incoming websocket message, go to function 'webSocketEvent'
-  
-  
 	Serial.println("WebSocket server started.");
 }
 
@@ -415,7 +417,7 @@ void startWebSocket() {					// Start a WebSocket server
 //
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght) {	// When a WebSocket message is received
 	switch (type) {
-		case WStype_DISCONNECTED: {  // if the websocket is disconnected
+		case WStype_DISCONNECTED: {	 // if the websocket is disconnected
 			Serial.printf("[%u] Disconnected!\n", num);
 			break;
 		}
@@ -424,9 +426,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 			Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
 			// rainbow = false;  // Turn rainbow off when a new connection is established
 			sendDataToWeb();
-		 	break;
+			break;
 		}
-		case WStype_TEXT: { // if new text data is received
+		case WStype_TEXT: {	 // if new text data is received
 			Serial.printf("[%u] get Text: %s\n", num, payload);
 			DynamicJsonDocument root(1024);
 			DeserializationError error = deserializeJson(root, payload);
@@ -454,7 +456,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 
 				delay(200);
 			}
-			break; 
+			break;
 		}
 	}
 }
@@ -492,7 +494,6 @@ void controlAC() {
 				}
 			}
 		} else if (acState.extControl == true) {
-			 
 			if (tstat.currentState == 2) {
 				acState.powerStatus = true;
 				acState.mode = 1;  // COOL_MODE
@@ -504,8 +505,7 @@ void controlAC() {
 				ac.send();	// economode is seperate message so send it as a seperate command
 				delay(200);
 				ac.setEconoToggle(true);  // turn off Econo mode
-			}
-			else {
+			} else {
 				acState.powerStatus = false;
 				acState.mode = 0;
 				acState.fan = 0;
@@ -759,7 +759,6 @@ void setup() {
 //+=============================================================================
 //
 void loop() {
-
 	webSocket.loop();  // constantly check for websocket events
 	ArduinoOTA.handle();
 	server.handleClient();
