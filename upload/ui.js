@@ -3,10 +3,10 @@
 
 const options = {
     url: 'ws://' + location.hostname + ':81/',
-    pingTimeout: 7000, 
-    pongTimeout: 5000, 
-    reconnectTimeout: 2000,
-    pingMsg: "heartbeat"
+    //pingTimeout: 9000, 
+    //pongTimeout: 7000, 
+    //reconnectTimeout: 3000,
+   // pingMsg: "heartbeat"
 }
 var websocketHeartbeatJs = new WebsocketHeartbeatJs(options);
 

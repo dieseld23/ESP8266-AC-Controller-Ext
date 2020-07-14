@@ -236,7 +236,7 @@ void led1TickerDisable() {
 //
 void led3Ticker() {
 	if (digitalRead(led3pin) == HIGH) {
-		led3TickerDisable();
+		//led3TickerDisable();
 	}
 	digitalWrite(led3pin, HIGH);  // set pin to the opposite state
 	Serial.println("ledon");
@@ -246,8 +246,9 @@ void led3Ticker() {
 // Turn off the Led after timeout
 //
 void led3TickerDisable() {
-	digitalWrite(led3pin, LOW);	 // Shut down the LED
-	led3tick.detach();			 // Stopping the ticker
+	digitalWrite(led3pin, HIGH);	 // Shut down the LED
+	//led3tick.detach();			 // Stopping the ticker
+	setLED = false;
 }
 
 //+=============================================================================
@@ -298,7 +299,6 @@ void getVenstarStatus() {
 			Serial.println("There was an error while deserializing");
 			http.end();	 // Close connection
 		} else {
-			// JsonObject doc = jsonDocument.as<JsonObject>();
 			tstat.name = doc["name"];									 // "GarageAC1234567890"
 			tstat.mode = doc["mode"];									 // 0
 			tstat.currentState = doc["state"];							 // 0
@@ -309,18 +309,18 @@ void getVenstarStatus() {
 			tstat.schedule = doc["schedule"];							 // 0
 			tstat.schedulepart = doc["schedulepart"];					 // 0
 			tstat.away = doc["away"];									 // 0
-			tstat.spacetemp = convertTemp(doc["spacetemp"], 0);			 // 79
-			tstat.heattemp = convertTemp(doc["heattemp"], 0);			 // 78
-			tstat.cooltemp = convertTemp(doc["cooltemp"], 0);			 // 75
-			tstat.cooltempmin = convertTemp(doc["cooltempmin"], 0);		 // 35
-			tstat.cooltempmax = convertTemp(doc["cooltempmax"], 0);		 // 99
-			tstat.heattempmin = convertTemp(doc["heattempmin"], 0);		 // 35
-			tstat.heattempmax = convertTemp(doc["heattempmax"], 0);		 // 99
-			tstat.setpointdelta = convertTemp(doc["setpointdelta"], 0);	 // 2
+			tstat.spacetemp = convertTemp(doc["spacetemp"].as<float>(), 0);			 // 79
+			tstat.heattemp = convertTemp(doc["heattemp"].as<float>(), 0);			 // 78
+			tstat.cooltemp = convertTemp(doc["cooltemp"].as<float>(), 0);			 // 75
+			tstat.cooltempmin = convertTemp(doc["cooltempmin"].as<float>(), 0);		 // 35
+			tstat.cooltempmax = convertTemp(doc["cooltempmax"].as<float>(), 0);		 // 99
+			tstat.heattempmin = convertTemp(doc["heattempmin"].as<float>(), 0);		 // 35
+			tstat.heattempmax = convertTemp(doc["heattempmax"].as<float>(), 0);		 // 99
+			tstat.setpointdelta = convertTemp(doc["setpointdelta"].as<float>(), 0);	 // 2
 			tstat.availablemodes = doc["availablemodes"];				 // 0
 		}
-		// Serial.println(tstat.currentState);
 		http.end();	 // Close connection
+		Serial.println(tstat.cooltemp);
 	}
 }
 
@@ -358,11 +358,12 @@ void enableMDNS() {
 //+=============================================================================
 // Convert Temp units if necessary
 //
-uint8_t convertTemp(float temp, uint8_t type) {
-	if (type == 0)	// C to F
-		return round((temp * (9 / 5) + 32));
+int convertTemp(float temp, uint8_t type) {
+	if (type == 0)	{// C to F
+		return int(round((temp * 9) / 5) + 32);
+	}
 	else if (type == 1)	 // F to C
-		return round((temp * (5 / 9) - 32));
+		return int(round((temp * 5) / 9) - 32);
 	else {
 		return 0;
 	}
@@ -424,7 +425,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 		case WStype_CONNECTED: {  // if a new websocket connection is established
 			IPAddress ip = webSocket.remoteIP(num);
 			Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-			// rainbow = false;  // Turn rainbow off when a new connection is established
 			sendDataToWeb();
 			break;
 		}
@@ -702,7 +702,7 @@ bool setupWifi(bool resetConf) {
 //
 void setup() {
 	pinMode(ledpin, OUTPUT);
-	// pinMode(led2pin, OUTPUT);
+	//pinMode(led2pin, OUTPUT);
 	pinMode(led3pin, OUTPUT);
 	Serial.begin(115200);
 	ac.begin();
@@ -769,7 +769,8 @@ void loop() {
 	}
 	controlAC();
 	if (setLED == true) {
-		led3tick.attach(3000, led3Ticker);
+	//	digitalWrite(led3pin, HIGH);
+		led3tick.attach(3, led3TickerDisable);
 	}
 	firstRun = false;
 }
