@@ -8,6 +8,8 @@ Using a NodeMCU board for this project with IR LED and transistor.
 
 Once powered on, connect to Wifi SSID ESP Setup (IP 192.168.1.4). Fill out details. Change the GarageAC to whatever IP you want for the NodeMCU device. GarageTstat is the IP of the Venstar thermostat.
 
+Also added data getting saved when it is changed. Therefore when it powers off and back on, you dont lose where it was previously set at.
+
 <img src="printscreen.png">
 
 ## Credits:
