@@ -450,10 +450,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 				if (root.containsKey("extControl")) {
 					acState.extControl = root["extControl"];
 				}
-				// String output;
-				// serializeJson(root, output);
-				// server.send(200, "text/plain", output);
-
 				delay(200);
 			}
 			break;
