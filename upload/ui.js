@@ -1,3 +1,5 @@
+var messageSent = false;
+
 const options = {
     url: 'ws://' + location.hostname + ':81/',
     pingTimeout: 3000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
@@ -17,6 +19,16 @@ websocketHeartbeatJs.onmessage = function (e) {
 	//console.log(`onmessage: ${e.data}`);
 	if (e.data == "heartbeat") {
 	}
+	else if (messageSent == true) {
+		if (!e.data == "rcv") {
+
+			console.log("Connection Lost - No response after sending data");
+		}
+		else {
+			messageSent = false;
+			console.log("Message Recieved by Server");
+		}
+	}
 	else {
 		var msg = JSON.parse(e.data);
 		updateStatus(msg);
@@ -28,11 +40,11 @@ websocketHeartbeatJs.onreconnect = function () {
 }
 
 websocketHeartbeatJs.onclose = () => {
-    websocketHeartbeatJs.onreconnect();
+
 }
 
 websocketHeartbeatJs.onerror = () => {
-    websocketHeartbeatJs.onreconnect();
+
 }
 
 function showPage() {
@@ -74,6 +86,7 @@ function postData(t) {
 	updateStatus(t);
 	console.log(t);
 	websocketHeartbeatJs.send(JSON.stringify(t));
+	messageSent = true;
 }
 
 function mode_onclick(mode) {

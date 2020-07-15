@@ -59,6 +59,7 @@ char wifi_config_name[] = "ESP Setup";				   // Default
 char host_name[20] = "garageac";					   // Default
 char tstatIP[20] = "garagetstat";					   // Default Venstar Tstat IP Address
 unsigned long previousMillis = 0;
+unsigned long previousMillisLED = 0;
 unsigned long currentMillis = 0;
 bool shouldSaveConfig = false;	// Flag for saving data
 bool setLED = false;
@@ -97,7 +98,6 @@ File fsUploadFile;
 state acState;
 state acStateOld;
 Ticker led1tick;
-Ticker led3tick;
 ESP8266WebServer server(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
 WebSocketsServer webSocket(81);
@@ -229,26 +229,6 @@ void led1TickerDisable() {
 	Serial.println("Turning off the LED to save power.");
 	digitalWrite(ledpin, HIGH);	 // Shut down the LED
 	led1tick.detach();			 // Stopping the ticker
-}
-
-//+=============================================================================
-// Toggle state
-//
-void led3Ticker() {
-	if (digitalRead(led3pin) == HIGH) {
-		//led3TickerDisable();
-	}
-	digitalWrite(led3pin, HIGH);  // set pin to the opposite state
-	Serial.println("ledon");
-}
-
-//+=============================================================================
-// Turn off the Led after timeout
-//
-void led3TickerDisable() {
-	digitalWrite(led3pin, HIGH);	 // Shut down the LED
-	//led3tick.detach();			 // Stopping the ticker
-	setLED = false;
 }
 
 //+=============================================================================
@@ -460,7 +440,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 						acState.extControl = root["extControl"];
 					}
 					delay(200);
+					webSocket.sendTXT(num,"rcv");		// send message recieved ackowledgment
 				}
+				
 				break;
 			}
 		}
@@ -527,6 +509,9 @@ void controlAC() {
 	}
 }
 
+//+=============================================================================
+//  Broadcast all data to web clients
+//
 void sendDataToWeb() {
 	DynamicJsonDocument root(1024);
 	root["mode"] = acState.mode;
@@ -771,16 +756,20 @@ void loop() {
 	MDNS.update();
 	currentMillis = millis();
 	if (acState.extControl == true || firstRun == true) {
-		if (currentMillis - previousMillis > 2000) {
+		if (currentMillis - previousMillis > 2000) {			// get data from Venstar tstat every 2 seconds
 			previousMillis = currentMillis;
 			getVenstarStatus();
 			// Serial.println(tstat.currentState);
 		}
 	}
 	controlAC();
+
 	if (setLED == true) {
-	//	digitalWrite(led3pin, HIGH);
-		led3tick.attach(3, led3TickerDisable);
+		digitalWrite(led3pin, HIGH);
+		if (currentMillis - previousMillisLED > 3000) {			// when IR data send out, turn on LED for 3 seconds
+			previousMillisLED = currentMillis;
+			digitalWrite(led3pin, LOW);
+		}
 	}
 	firstRun = false;
 }
