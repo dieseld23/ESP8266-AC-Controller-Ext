@@ -1,7 +1,7 @@
 const options = {
     url: 'ws://' + location.hostname + ':81/',
-    pingTimeout: 7000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
-	pongTimeout: 9000, 		// After the Ping message is sent, the connection will be disconnected without receiving the backend message within XX seconds
+    pingTimeout: 4000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
+	pongTimeout: 6000, 		// After the Ping message is sent, the connection will be disconnected without receiving the backend message within XX seconds
     reconnectTimeout: 3000,		// 	The interval of reconnection
 	pingMsg: "heartbeat"		// Ping message value
 	//repeatLimit: null			// The trial times of reconnection。default: unlimited
