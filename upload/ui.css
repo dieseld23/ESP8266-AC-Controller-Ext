@@ -4,12 +4,15 @@ body {
 	color: hsl(210, 10%, 62%);
 }
 
+#main {
+	  opacity:0;/*Remove display and hide opacity*/
+}
+
 .disable-Btn {
 	pointer-events: none;
 	cursor: default;
 	opacity: 0.4;
-	filter: alpha(opacity=40);
-	/* msie */
+	filter: alpha(opacity=40);	/* msie */
 }
 
 .reconnectAlert {
@@ -22,6 +25,7 @@ body {
 }
 
 #loader {
+	transition:1s ease;
 	position: absolute;
 	left: 50%;
 	top: 50%;

@@ -9,7 +9,7 @@ const options = {
 let websocketHeartbeatJs = new WebsocketHeartbeatJs(options);
 
 websocketHeartbeatJs.onopen = function () {
-	$(".reconnectAlert").hide(); 
+	$(".reconnectAlert").slideUp(); 
 	showPage();
 	console.log("Websocket Connected" + ' to ws://' + location.hostname + ':81/', ['arduino']);
 }
@@ -23,18 +23,18 @@ websocketHeartbeatJs.onmessage = function (e) {
 	}
 }
 websocketHeartbeatJs.onreconnect = function () {
-	$(".reconnectAlert").show();
+	$(".reconnectAlert").slideDown();
 	console.log('Reconnecting...');
 }
 
 websocketHeartbeatJs.onclose = () => {
-	$(".reconnectAlert").show();
+	$(".reconnectAlert").slideDown();
     websocketHeartbeatJs.onreconnect();
 }
 
 function showPage() {
-	document.getElementById("loader").style.display = "none";
-	document.getElementById("main").style.display = "block";
+	document.getElementById("loader").style.opacity = 0;
+	document.getElementById("main").style.opacity = 1;
   }
 
 function updateStatus(data) {

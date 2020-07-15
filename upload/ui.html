@@ -18,19 +18,17 @@
 
 <body>
 	<div id="loader"></div>
-	<div id="main" style="display:none;" class="container">
+	<div id="main" class="container">
 		<nav class="navbar navbar-default navbar-fixed-top" role="navigation">
 			<div class="container-fluid">
 				<div class="navbar-brand">
 					<p>Garage AC Control</p>
 				</div>
-				<p class="navbar-text navbar-right sr-only" id="spinner"><i
-						class="fa fa-circle-o-notch fa-spin fa-lg"></i></p>
 			</div>
 		</nav>
 
-		<div class="container-fluid reconnectAlert alert alert-danger" id="alert">
-			<a href="#" class="close" data-dismiss="alert" aria-label="close">&times;</a>
+		<div class="container-fluid reconnectAlert alert alert-dark" id="alert">
+			<a href="#" class="close" data-dismiss="alert">&times;</a>
 			<strong>Connection Lost. Reconnecting<span id="wait">.</span></strong>
 		</div>
 
