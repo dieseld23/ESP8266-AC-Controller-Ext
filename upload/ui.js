@@ -1,62 +1,30 @@
-
-
-
 const options = {
     url: 'ws://' + location.hostname + ':81/',
-    //pingTimeout: 9000, 
-    //pongTimeout: 7000, 
-    //reconnectTimeout: 3000,
-   // pingMsg: "heartbeat"
+    pingTimeout: 7000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
+	pongTimeout: 9000, 		// After the Ping message is sent, the connection will be disconnected without receiving the backend message within XX seconds
+    reconnectTimeout: 3000,		// 	The interval of reconnection
+	pingMsg: "heartbeat"		// Ping message value
+	//repeatLimit: null			// The trial times of reconnection。default: unlimited
 }
-var websocketHeartbeatJs = new WebsocketHeartbeatJs(options);
+let websocketHeartbeatJs = new WebsocketHeartbeatJs(options);
 
 websocketHeartbeatJs.onopen = function () {
 	showPage();
 	console.log("Websocket Connected" + ' to ws://' + location.hostname + ':81/', ['arduino']);
-
 }
 websocketHeartbeatJs.onmessage = function (e) {
 	console.log(`onmessage: ${e.data}`);
-	var msg = JSON.parse(e.data);
-	updateStatus(msg);
+	if (e.data == "heartbeat") {
+	}
+	else {
+		var msg = JSON.parse(e.data);
+		updateStatus(msg);
+	}
 }
 websocketHeartbeatJs.onreconnect = function () {
-    console.log('Reconnecting...');
+	console.log('Reconnecting...');
 }
 
-function loadPage () {
-}
-/*
-var connection = new WebSocket('ws://' + location.hostname + ':81/', ['arduino']);
-connection.onopen = function () {
-	showPage();
-	console.log("Websocket Connected" + ' to ws://' + location.hostname + ':81/', ['arduino']);
-	connection.send('Connect ' + new Date());
-};
-connection.onerror = function (error) {
-	console.log('WebSocket Error ', error);
-};
-connection.onmessage = function (event) {
-	//console.log('Server: ', event.data);
-	var msg = JSON.parse(event.data);
-	//console.log(msg);
-	heartbeat();
-	updateStatus(msg);
-};
-connection.onclose = function (event) {
-	if (event.wasClean) {
-		console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
-	} else {
-		// e.g. server process killed or network down
-		// event.code is usually 1006 in WebsocketHeartbeatJs case
-		console.log('[close] Connection died');
-	}
-}; 
-
-function heartbeat() {
-
-}
-*/
 function showPage() {
 	document.getElementById("loader").style.display = "none";
 	document.getElementById("main").style.display = "block";

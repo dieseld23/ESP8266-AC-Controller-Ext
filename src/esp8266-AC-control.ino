@@ -320,7 +320,6 @@ void getVenstarStatus() {
 			tstat.availablemodes = doc["availablemodes"];				 // 0
 		}
 		http.end();	 // Close connection
-		Serial.println(tstat.cooltemp);
 	}
 }
 
@@ -359,7 +358,7 @@ void enableMDNS() {
 // Convert Temp units if necessary
 //
 int convertTemp(float temp, uint8_t type) {
-	if (type == 0)	{// C to F
+	if (type == 0)	{	// C to F
 		return int(round((temp * 9) / 5) + 32);
 	}
 	else if (type == 1)	 // F to C
@@ -416,7 +415,7 @@ void startWebSocket() {					// Start a WebSocket server
 //+=============================================================================
 // WebSocket Event
 //
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght) {	// When a WebSocket message is received
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length) {	// When a WebSocket message is received
 	switch (type) {
 		case WStype_DISCONNECTED: {	 // if the websocket is disconnected
 			Serial.printf("[%u] Disconnected!\n", num);
@@ -429,30 +428,41 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lenght)
 			break;
 		}
 		case WStype_TEXT: {	 // if new text data is received
-			Serial.printf("[%u] get Text: %s\n", num, payload);
-			DynamicJsonDocument root(1024);
-			DeserializationError error = deserializeJson(root, payload);
-			if (error) {
-				// Serial.println("Deserialization Error");
-			} else {
-				if (root.containsKey("temp")) {
-					acState.temperature = (uint8_t)root["temp"];
-				}
-				if (root.containsKey("fan")) {
-					acState.fan = (uint8_t)root["fan"];
-				}
-				if (root.containsKey("power")) {
-					acState.powerStatus = root["power"];
-				}
-				if (root.containsKey("mode")) {
-					acState.mode = root["mode"];
-				}
-				if (root.containsKey("extControl")) {
-					acState.extControl = root["extControl"];
-				}
-				delay(200);
+			String pl = "";
+			for(int i = 0; i < length; i++) { 
+				pl += (char)payload[i];
 			}
-			break;
+			if 	(pl == "heartbeat") {
+				//Serial.printf("[%u] Pong sent: %s\n", num, "heartbeat");
+				webSocket.sendTXT(num,pl);
+			}
+			else {
+				Serial.printf("[%u] get Text: %s\n", num, payload);
+				DynamicJsonDocument root(1024);
+				DeserializationError error = deserializeJson(root, payload);
+				if (error) {
+					// Serial.println("Deserialization Error");
+				}
+				else {
+					if (root.containsKey("temp")) {
+						acState.temperature = (uint8_t)root["temp"];
+					}
+					if (root.containsKey("fan")) {
+						acState.fan = (uint8_t)root["fan"];
+					}
+					if (root.containsKey("power")) {
+						acState.powerStatus = root["power"];
+					}
+					if (root.containsKey("mode")) {
+						acState.mode = root["mode"];
+					}
+					if (root.containsKey("extControl")) {
+						acState.extControl = root["extControl"];
+					}
+					delay(200);
+				}
+				break;
+			}
 		}
 	}
 }
@@ -526,7 +536,7 @@ void sendDataToWeb() {
 	root["extControl"] = acState.extControl;
 	String output;
 	serializeJson(root, output);
-	webSocket.sendTXT(0, output);  // first value is client id
+	webSocket.broadcastTXT(output);  // first value is client id
 }
 
 //+=============================================================================
