@@ -12,6 +12,15 @@ body {
 	/* msie */
 }
 
+.reconnectAlert {
+    position: fixed;
+    bottom: 0px;
+	width: 100%;
+	left: 0px;
+	margin-bottom: 0px;
+	border-radius: 5px 5px 0px 0px;
+}
+
 #loader {
 	position: absolute;
 	left: 50%;

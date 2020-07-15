@@ -1,7 +1,7 @@
 const options = {
     url: 'ws://' + location.hostname + ':81/',
-    pingTimeout: 4000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
-	pongTimeout: 6000, 		// After the Ping message is sent, the connection will be disconnected without receiving the backend message within XX seconds
+    pingTimeout: 5000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
+	pongTimeout: 3000, 		// After the Ping message is sent, the connection will be disconnected without receiving the backend message within XX seconds
     reconnectTimeout: 3000,		// 	The interval of reconnection
 	pingMsg: "heartbeat"		// Ping message value
 	//repeatLimit: null			// The trial times of reconnection。default: unlimited
@@ -9,11 +9,12 @@ const options = {
 let websocketHeartbeatJs = new WebsocketHeartbeatJs(options);
 
 websocketHeartbeatJs.onopen = function () {
+	$(".reconnectAlert").hide(); 
 	showPage();
 	console.log("Websocket Connected" + ' to ws://' + location.hostname + ':81/', ['arduino']);
 }
 websocketHeartbeatJs.onmessage = function (e) {
-	console.log(`onmessage: ${e.data}`);
+	//console.log(`onmessage: ${e.data}`);
 	if (e.data == "heartbeat") {
 	}
 	else {
@@ -22,7 +23,13 @@ websocketHeartbeatJs.onmessage = function (e) {
 	}
 }
 websocketHeartbeatJs.onreconnect = function () {
+	$(".reconnectAlert").show();
 	console.log('Reconnecting...');
+}
+
+websocketHeartbeatJs.onclose = () => {
+	$(".reconnectAlert").show();
+    websocketHeartbeatJs.onreconnect();
 }
 
 function showPage() {
@@ -164,3 +171,11 @@ function temp_onclick(temp) {
 	$("#target_temp").text(state["temp"] + " F");
 	postData(state);
 }
+
+var dots = window.setInterval( function() {
+	var wait = document.getElementById("wait");
+	if ( wait.innerHTML.length > 3 ) 
+		wait.innerHTML = "";
+	else 
+		wait.innerHTML += ".";
+	}, 300);
