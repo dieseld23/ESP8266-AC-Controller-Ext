@@ -94,6 +94,7 @@ struct tstatData {
 };
 IRMideaAC ac(kIrLed);  // Library initialization, change it according to the imported library file.
 tstatData tstat;
+tstatData tstatOld;
 File fsUploadFile;
 state acState;
 state acStateOld;
@@ -149,16 +150,18 @@ bool handleFileRead(String path) {
 }
 
 //+=============================================================================
-// Compare the acState struct with previous data
+// Compare the acState struct and tstat currentstate with previous data
 //
 bool compareACstate() {
 	if (acState.powerStatus != acStateOld.powerStatus || acState.extControl != acStateOld.extControl || acState.extControl != acStateOld.extControl ||
 		acState.mode != acStateOld.mode || acState.fan != acStateOld.fan || acState.temperature != acStateOld.temperature) {
-		acStateOld = acState;
-		return true;
-	} else {
-		return false;
+		if (tstat.currentState != tstatOld.currentState) {
+			acStateOld = acState;
+			tstatOld.currentState = tstat.currentState;
+			return true;
+		}
 	}
+	return false;	
 }
 
 //+=============================================================================
@@ -489,7 +492,8 @@ void controlAC() {
 				acState.fan = 0;  // FAN_AUTO
 				ac.on();
 				ac.setTemp(acState.temperature);
-				ac.setFan(acState.fan);
+				ac.setFan(FAN_AUTO);
+				ac.setMode(COOL_MODE);
 				ac.send();	// economode is seperate message so send it as a seperate command
 				delay(1000);
 				ac.setEconoToggle(true);  // turn off Econo mode
@@ -498,6 +502,8 @@ void controlAC() {
 				acState.mode = 0;
 				acState.fan = 0;
 				acState.temperature = tstat.cooltemp;
+				ac.setFan(FAN_AUTO);
+				ac.setMode(AUTO_MODE);
 				ac.off();
 			}
 		} else {
@@ -759,7 +765,7 @@ void loop() {
 	if (acState.extControl == true || firstRun == true) {
 		if (currentMillis - previousMillis > 2000) {			// get data from Venstar tstat every 2 seconds
 			previousMillis = currentMillis;
-			getVenstarStatus();
+			getVenstarStatus();  // need to check if this status has updated/changed (CompareACState )
 			// Serial.println(tstat.currentState);
 		}
 	}
