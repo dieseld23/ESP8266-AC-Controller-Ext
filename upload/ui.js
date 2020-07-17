@@ -2,8 +2,8 @@ var messageSent = false;
 
 const options = {
     url: 'ws://' + location.hostname + ':81/',
-    pingTimeout: 3000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
-	pongTimeout: 2000, 		// After the Ping message is sent, the connection will be disconnected without receiving the backend message within XX seconds
+    pingTimeout: 1000, 		// A heartbeat is sent every XX seconds. If any backend message is received, the timer will reset
+	pongTimeout: 1000, 		// After the Ping message is sent, the connection will be disconnected without receiving the backend message within XX seconds
     reconnectTimeout: 3000,		// 	The interval of reconnection
 	pingMsg: "heartbeat"		// Ping message value
 	//repeatLimit: null			// The trial times of reconnection。default: unlimited
@@ -20,9 +20,10 @@ websocketHeartbeatJs.onmessage = function (e) {
 	if (e.data == "heartbeat") {
 	}
 	else if (messageSent == true) {
+		console.log(e.data);
 		if (!e.data == "rcv") {
-
 			console.log("Connection Lost - No response after sending data");
+			websocketHeartbeatJs.reconnect();
 		}
 		else {
 			messageSent = false;
@@ -40,11 +41,11 @@ websocketHeartbeatJs.onreconnect = function () {
 }
 
 websocketHeartbeatJs.onclose = () => {
-
+	console.log('Websocket Closed');
 }
 
 websocketHeartbeatJs.onerror = () => {
-
+	console.log('Websocket Error');
 }
 
 function showPage() {

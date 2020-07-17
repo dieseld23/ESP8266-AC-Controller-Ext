@@ -491,13 +491,14 @@ void controlAC() {
 				ac.setTemp(acState.temperature);
 				ac.setFan(acState.fan);
 				ac.send();	// economode is seperate message so send it as a seperate command
-				delay(200);
+				delay(1000);
 				ac.setEconoToggle(true);  // turn off Econo mode
 			} else {
 				acState.powerStatus = false;
 				acState.mode = 0;
 				acState.fan = 0;
 				acState.temperature = tstat.cooltemp;
+				ac.off();
 			}
 		} else {
 			ac.off();
@@ -769,6 +770,7 @@ void loop() {
 		if (currentMillis - previousMillisLED > 3000) {			// when IR data send out, turn on LED for 3 seconds
 			previousMillisLED = currentMillis;
 			digitalWrite(led3pin, LOW);
+			setLED = false;
 		}
 	}
 	firstRun = false;
